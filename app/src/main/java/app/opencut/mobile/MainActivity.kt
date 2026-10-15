@@ -227,8 +227,18 @@ class MainActivity : AppCompatActivity() {
                 isFocusable = true
                 setOnClickListener {
                     toolButtons.forEach { button ->
-                        button.setBackgroundColor(if (button === this) accent else 0xFF292633.toInt())
+                        val selected = button === this
+                        button.animate().cancel()
+                        button.animate()
+                            .scaleX(if (selected) 1.06f else 1f)
+                            .scaleY(if (selected) 1.06f else 1f)
+                            .alpha(if (selected) 1f else 0.82f)
+                            .setDuration(180L)
+                            .setInterpolator(android.view.animation.OvershootInterpolator(1.15f))
+                            .start()
+                        button.setBackgroundColor(if (selected) accent else 0xFF292633.toInt())
                     }
+                    animateToolTap(this)
                     showEditorPanel(item.first)
                 }
             }
@@ -905,7 +915,17 @@ class MainActivity : AppCompatActivity() {
         if (!::captionPreview.isInitialized || !::captionInput.isInitialized) return
         val value = captionInput.text.toString().trim()
         captionPreview.text = value
+        val wasHidden = captionPreview.visibility != View.VISIBLE
         captionPreview.visibility = if (value.isEmpty()) View.GONE else View.VISIBLE
+        if (value.isNotEmpty() && wasHidden) {
+            captionPreview.alpha = 0f
+            captionPreview.scaleX = 0.88f
+            captionPreview.scaleY = 0.88f
+            captionPreview.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(220L)
+                .setInterpolator(android.view.animation.OvershootInterpolator(1.1f))
+                .start()
+        }
         captionPreview.setPadding(dp(12), dp(6), dp(12), dp(6))
         when (captionStyle) {
             "Bold Yellow" -> {
@@ -1087,7 +1107,14 @@ class MainActivity : AppCompatActivity() {
             actions.addView(down, LinearLayout.LayoutParams(0, dp(44), 1f))
             actions.addView(remove, LinearLayout.LayoutParams(0, dp(44), 1f))
             row.addView(actions)
+            row.alpha = 0f
+            row.translationY = dp(8).toFloat()
             timelineContainer.addView(row, LinearLayout.LayoutParams(dp(190), dp(128)).apply { rightMargin = dp(8) })
+            row.animate().alpha(1f).translationY(0f)
+                .setStartDelay((index * 28L).coerceAtMost(180L))
+                .setDuration(200L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
         }
     }
 
@@ -1304,7 +1331,54 @@ class MainActivity : AppCompatActivity() {
         }
         editorScroll.post {
             editorScroll.smoothScrollTo(0, ((target?.top ?: 0) - dp(12)).coerceAtLeast(0))
+            // Short, low-cost entrance motion: animate only the newly visible panel.
+            var animateSection: String? = null
+            var insideSelectedPanel = false
+            var delay = 0L
+            for (index in 0 until editorRoot.childCount) {
+                val child = editorRoot.getChildAt(index)
+                val heading = if (child is TextView) child.text?.toString() else null
+                if (heading != null && heading in sectionNames) {
+                    animateSection = when (heading) {
+                        "VIDEO PREVIEW", "TIMELINE CLIPS" -> null
+                        "TRIM RANGE" -> "TRIM RANGE"
+                        "CANVAS & AUDIO" -> "CANVAS & AUDIO"
+                        "CAPTION OVERLAY & STYLE PREVIEW" -> "CAPTION OVERLAY & STYLE PREVIEW"
+                        "GEMINI AI ASSISTANT" -> "GEMINI AI ASSISTANT"
+                        "EXPORT", "FEATURE STATUS" -> "EXPORT"
+                        else -> null
+                    }
+                    insideSelectedPanel = selectedSection == animateSection ||
+                        (panelName == "▶\nPreview" && heading == "VIDEO PREVIEW")
+                    delay = 0L
+                    if (insideSelectedPanel && child.visibility == View.VISIBLE) animatePanelEntrance(child, delay)
+                } else if (insideSelectedPanel && child.visibility == View.VISIBLE) {
+                    animatePanelEntrance(child, delay)
+                    delay += 24L
+                }
+            }
         }
+    }
+
+    private fun animateToolTap(view: View) {
+        view.animate().cancel()
+        view.scaleX = 0.94f
+        view.scaleY = 0.94f
+        view.animate().scaleX(1.06f).scaleY(1.06f).setDuration(120L)
+            .withEndAction {
+                view.animate().scaleX(1f).scaleY(1f).setDuration(110L).start()
+            }.start()
+    }
+
+    private fun animatePanelEntrance(view: View, delay: Long = 0L) {
+        view.animate().cancel()
+        view.alpha = 0f
+        view.translationY = dp(10).toFloat()
+        view.animate().alpha(1f).translationY(0f)
+            .setStartDelay(delay)
+            .setDuration(220L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .start()
     }
 
     private fun sectionTitle(text: String, color: Int) = TextView(this).apply {
