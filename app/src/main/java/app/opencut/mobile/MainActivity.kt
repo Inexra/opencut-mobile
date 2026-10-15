@@ -1478,16 +1478,7 @@ class MainActivity : AppCompatActivity() {
                 return styled
             }
 
-            override fun getOverlaySettings(presentationTimeUs: Long): androidx.media3.effect.OverlaySettings {
-                val seconds = presentationTimeUs / 1_000_000f
-                val progress = (seconds / 0.7f).coerceIn(0f, 1f)
-                val settings = androidx.media3.effect.StaticOverlaySettings.Builder()
-                when (animation) {
-                    "Slide up" -> settings.setBackgroundFrameAnchor(0f, (-0.15f * (1f - progress)))
-                    "Pop in" -> settings.setScale(0.75f + 0.25f * progress, 0.75f + 0.25f * progress)
-                }
-                return settings.build()
-            }
+
         }
     }
 
