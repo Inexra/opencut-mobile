@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.view.Gravity
+import android.content.ClipData
+import android.view.DragEvent
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -1005,6 +1007,41 @@ class MainActivity : AppCompatActivity() {
                     else bitmap.recycle()
                 }
             }.start()
+            row.tag = index
+            row.setOnLongClickListener {
+                val dragData = ClipData.newPlainText("opencut-clip-index", index.toString())
+                it.startDragAndDrop(dragData, View.DragShadowBuilder(it), null, 0)
+                true
+            }
+            row.setOnDragListener { targetView, event ->
+                when (event.action) {
+                    DragEvent.ACTION_DRAG_STARTED -> event.clipDescription?.label == "opencut-clip-index"
+                    DragEvent.ACTION_DRAG_ENTERED -> {
+                        targetView.setBackgroundColor(0xFF494064.toInt())
+                        true
+                    }
+                    DragEvent.ACTION_DRAG_EXITED -> {
+                        targetView.setBackgroundColor(if (clip.uri == selectedVideo) 0xFF383052.toInt() else 0xFF24232D.toInt())
+                        true
+                    }
+                    DragEvent.ACTION_DROP -> {
+                        val from = event.clipData.getItemAt(0).text.toString().toIntOrNull()
+                        val to = targetView.tag as? Int
+                        if (from != null && to != null && from in timelineClips.indices && to in timelineClips.indices && from != to) {
+                            val moving = timelineClips.removeAt(from)
+                            timelineClips.add(to, moving)
+                            renderTimeline()
+                            status.text = "Clip order updated."
+                        }
+                        true
+                    }
+                    DragEvent.ACTION_DRAG_ENDED -> {
+                        targetView.setBackgroundColor(if (clip.uri == selectedVideo) 0xFF383052.toInt() else 0xFF24232D.toInt())
+                        true
+                    }
+                    else -> true
+                }
+            }
             row.addView(select, matchWrap())
             val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             val up = Button(this).apply {
