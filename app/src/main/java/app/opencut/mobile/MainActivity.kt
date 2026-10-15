@@ -187,7 +187,6 @@ class MainActivity : AppCompatActivity() {
 
         playerView = PlayerView(this).apply {
             setBackgroundColor(0xFF050507.toInt())
-            setSurfaceType(PlayerView.SURFACE_TYPE_TEXTURE_VIEW)
             useController = true
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(220)
@@ -748,7 +747,7 @@ class MainActivity : AppCompatActivity() {
         if (rotationDegrees != 0f) {
             videoEffects.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(rotationDegrees).build())
         }
-        val textOverlays = mutableListOf<TextOverlay>()
+        val textOverlays = mutableListOf<androidx.media3.effect.TextureOverlay>()
         val overlayText = overlayInput.text.toString().trim()
         if (overlayText.isNotEmpty()) {
             val styledText = SpannableString(overlayText).apply {
