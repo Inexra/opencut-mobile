@@ -1250,7 +1250,7 @@ class MainActivity : AppCompatActivity() {
         for (index in 0 until editorRoot.childCount) {
             val child = editorRoot.getChildAt(index)
             val title = if (child is TextView) child.text?.toString() else null
-            if (title in sectionNames) {
+            if (title != null && title in sectionNames) {
                 when (title) {
                     "VIDEO PREVIEW", "TIMELINE CLIPS" -> currentSection = null
                     "TRIM RANGE" -> { currentSection = "TRIM RANGE"; reachedTools = true }
