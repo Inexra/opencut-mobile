@@ -524,8 +524,6 @@ class MainActivity : AppCompatActivity() {
                 setPadding(0, dp(5), 0, dp(5))
             })
         }
-    }
-
         polishUi(root, accent, panel, white)
     }
 
