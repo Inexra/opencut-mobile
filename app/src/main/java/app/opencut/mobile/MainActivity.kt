@@ -74,11 +74,35 @@ class MainActivity : AppCompatActivity() {
     private lateinit var captionInput: EditText
     private lateinit var captionPreview: TextView
     private lateinit var captionStyleButton: Button
+    private lateinit var captionToolsStatus: TextView
     private var captionStyle = "Classic"
     private var previewSpeed = 1.0f
     private var outputRatio: String = "Original"
     private var rotationDegrees = 0f
     private var muteAudio = false
+
+    private val createSrtDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/x-subrip")) { uri ->
+        if (uri != null) {
+            try {
+                val caption = captionInput.text.toString().trim()
+                if (caption.isEmpty()) {
+                    status.text = "Type a caption before exporting subtitles."
+                    return@registerForActivityResult
+                }
+                val start = startInput.text.toString().toDoubleOrNull() ?: 0.0
+                val end = endInput.text.toString().toDoubleOrNull() ?: 0.0
+                if (end <= start) {
+                    status.text = "Set a valid trim range before exporting SRT."
+                    return@registerForActivityResult
+                }
+                val srt = "1\\n${toSrtTime(start)} --> ${toSrtTime(end)}\\n${caption.replace("-->", "→")}\\n"
+                contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { it.write(srt) }
+                status.text = "Subtitle file exported. It contains one caption cue for the selected time range."
+            } catch (e: Exception) {
+                status.text = "Could not save SRT: ${e.message}"
+            }
+        }
+    }
 
     private val pickVideos = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) {
@@ -373,6 +397,33 @@ class MainActivity : AppCompatActivity() {
             textSize = 12f
             setTextColor(muted)
         })
+        val captionActionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val srtButton = Button(this).apply {
+            text = "Export SRT"
+            textSize = 11f
+            setOnClickListener {
+                if (captionInput.text.toString().trim().isEmpty()) {
+                    status.text = "Type a caption first."
+                } else {
+                    createSrtDocument.launch("OpenCut-subtitles.srt")
+                }
+            }
+        }
+        val smartPresetButton = Button(this).apply {
+            text = "Smart edit presets"
+            textSize = 11f
+            setOnClickListener { showSmartEditPresets() }
+        }
+        captionActionRow.addView(srtButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(4) })
+        captionActionRow.addView(smartPresetButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(4) })
+        root.addView(captionActionRow)
+        captionToolsStatus = TextView(this).apply {
+            text = "Smart presets apply editing settings locally; they do not call a cloud AI service."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        root.addView(captionToolsStatus)
 
         exportButton = Button(this).apply {
             text = "Export trimmed MP4"
@@ -405,7 +456,9 @@ class MainActivity : AppCompatActivity() {
             "✓  Export aspect ratios: original, 16:9, 9:16, square",
             "✓  Rotate, mute audio, and burn in a static text overlay",
             "✓  Five caption overlay styles with live preview and export",
-            "○  Timed AI speech transcription and automatic highlight detection",
+            "✓  Smart edit presets for Shorts, landscape, square, podcast and karaoke",
+            "✓  Export a basic SRT subtitle file for the selected time range",
+            "○  AI speech transcription, highlight detection and multi-clip export",
             "○  Automatic highlight/Shorts detection"
         )
         roadmap.forEach { line ->
@@ -416,6 +469,47 @@ class MainActivity : AppCompatActivity() {
                 setPadding(0, dp(5), 0, dp(5))
             })
         }
+    }
+
+    private fun toSrtTime(seconds: Double): String {
+        val totalMs = (seconds.coerceAtLeast(0.0) * 1000.0).toLong()
+        val hours = totalMs / 3_600_000
+        val minutes = (totalMs % 3_600_000) / 60_000
+        val secs = (totalMs % 60_000) / 1000
+        val millis = totalMs % 1000
+        return String.format(Locale.US, "%02d:%02d:%02d,%03d", hours, minutes, secs, millis)
+    }
+
+    private fun showSmartEditPresets() {
+        val presets = arrayOf(
+            "YouTube Shorts — vertical, yellow captions",
+            "YouTube landscape — 16:9, classic captions",
+            "Square social — 1:1, minimal captions",
+            "Podcast clip — landscape, boxed captions",
+            "Karaoke — original ratio, green captions"
+        )
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Smart edit presets")
+            .setItems(presets) { _, which ->
+                when (which) {
+                    0 -> { outputRatio = "Shorts 9:16"; captionStyle = "Bold Yellow" }
+                    1 -> { outputRatio = "YouTube 16:9"; captionStyle = "Classic" }
+                    2 -> { outputRatio = "Square 1:1"; captionStyle = "Minimal" }
+                    3 -> { outputRatio = "YouTube 16:9"; captionStyle = "Boxed" }
+                    else -> { captionStyle = "Karaoke" }
+                }
+                aspectRatioButton.text = "Ratio: " + when (outputRatio) {
+                    "YouTube 16:9" -> "16:9"
+                    "Shorts 9:16" -> "9:16"
+                    "Square 1:1" -> "1:1"
+                    else -> "Original"
+                }
+                captionStyleButton.text = "Caption style: $captionStyle"
+                updateCaptionPreview()
+                captionToolsStatus.text = "Applied preset: ${presets[which]}. Review the preview before exporting."
+                status.text = "Smart edit preset applied. The preset uses local rules, not generative AI."
+            }
+            .show()
     }
 
     private fun buildCaptionSpannable(value: String): SpannableString {
