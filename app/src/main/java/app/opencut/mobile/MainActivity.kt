@@ -38,6 +38,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.EditedMediaItemSequence
+import androidx.media3.transformer.Composition
 import androidx.media3.transformer.Effects
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.Presentation
@@ -299,7 +301,7 @@ class MainActivity : AppCompatActivity() {
 
         root.addView(sectionTitle("TIMELINE CLIPS", white))
         root.addView(TextView(this).apply {
-            text = "Import several videos, select one to preview, then reorder or remove clips. Trim/export currently applies to the selected clip."
+            text = "Import several videos, select one to preview and trim, then reorder or remove clips. Export joins the ordered timeline with straight cuts; trim applies to the selected clip."
             textSize = 12f
             setTextColor(muted)
             setPadding(0, dp(2), 0, dp(8))
@@ -677,7 +679,7 @@ class MainActivity : AppCompatActivity() {
 
         root.addView(sectionTitle("EXPORT", white))
         exportButton = Button(this).apply {
-            text = "Export trimmed MP4"
+            text = "Export timeline MP4"
             isEnabled = false
             setOnClickListener { exportTrim() }
         }
@@ -703,7 +705,7 @@ class MainActivity : AppCompatActivity() {
             "✓  Import multiple videos into a clip list",
             "✓  Select, reorder, and remove timeline clips",
             "✓  Preview speed and playhead-based trim markers",
-            "✓  Trim/export the selected clip as MP4",
+            "✓  Export the ordered timeline as one MP4 (straight cuts)",
             "✓  Export aspect ratios: original, 16:9, 9:16, square",
             "✓  Rotate, mute audio, and burn in a static text overlay",
             "✓  Five caption overlay styles with live preview and export",
@@ -1319,10 +1321,21 @@ class MainActivity : AppCompatActivity() {
             textOverlays.add(TextOverlay.createStaticTextOverlay(styledCaption))
         }
         if (textOverlays.isNotEmpty()) videoEffects.add(OverlayEffect(textOverlays))
-        val edited = EditedMediaItem.Builder(mediaItem)
-            .setRemoveAudio(muteAudio)
-            .setEffects(Effects(emptyList(), videoEffects))
-            .build()
+        val clipsToExport = if (timelineClips.isEmpty()) {
+            listOf(TimelineClip(uri, "Selected clip"))
+        } else {
+            timelineClips.toList()
+        }
+        val editedItems = clipsToExport.map { clip ->
+            val sourceItem = if (clip.uri == uri) mediaItem else MediaItem.fromUri(clip.uri)
+            EditedMediaItem.Builder(sourceItem)
+                .setRemoveAudio(muteAudio)
+                .setEffects(Effects(emptyList(), videoEffects))
+                .build()
+        }
+        val composition = Composition.Builder(
+            EditedMediaItemSequence.withAudioAndVideoFrom(editedItems)
+        ).build()
 
         val listener = object : Transformer.Listener {
             override fun onCompleted(composition: androidx.media3.transformer.Composition, exportResult: ExportResult) {
@@ -1357,7 +1370,7 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         try {
-            transformer?.start(edited, outFile.absolutePath)
+            transformer?.start(composition, outFile.absolutePath)
             pollProgress()
         } catch (e: Exception) {
             outFile.delete()
