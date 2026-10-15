@@ -105,6 +105,7 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
     private lateinit var titleAnimationButton: Button
     private lateinit var trimFineButton: Button
     private lateinit var highlightButton: Button
+    private lateinit var aiHighlightButton: Button
     private lateinit var muteButton: Button
     private lateinit var overlayInput: EditText
     private lateinit var stickerInput: EditText
@@ -699,6 +700,11 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
             setOnClickListener { scanVisualHighlights() }
         }
         root.addView(highlightButton, matchWrap())
+        aiHighlightButton = Button(this).apply {
+            text = "Find AI highlight moments"
+            setOnClickListener { findGeminiHighlights() }
+        }
+        root.addView(aiHighlightButton, matchWrap())
         aiStatus = TextView(this).apply {
             text = "AI generation uses your Gemini API quota and requires internet access."
             textSize = 12f
@@ -1563,6 +1569,113 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
     }
 
 
+
+
+    private fun findGeminiHighlights() {
+        val apiKey = getGeminiApiKey()
+        val videoUri = selectedVideo
+        if (apiKey.isNullOrBlank()) {
+            android.app.AlertDialog.Builder(this).setTitle("Gemini API key required")
+                .setMessage("Add your own Gemini API key in Settings to analyze video highlights.")
+                .setPositiveButton("Add key") { _, _ -> showGeminiKeyDialog() }
+                .setNegativeButton("Cancel", null).show()
+            return
+        }
+        if (videoUri == null) {
+            aiStatus.text = "Import a video first."
+            return
+        }
+        aiHighlightButton.isEnabled = false
+        aiStatus.text = "Uploading video for AI highlight analysis…"
+        Thread {
+            var failure: String? = null
+            var highlights = emptyList<Triple<Double, Double, String>>()
+            try {
+                val mime = contentResolver.getType(videoUri) ?: "video/mp4"
+                val size = contentResolver.openAssetFileDescriptor(videoUri, "r")?.use { it.length } ?: -1L
+                if (size <= 0L) throw IllegalStateException("Could not determine video size.")
+                val start = (URL("https://generativelanguage.googleapis.com/upload/v1beta/files?key=" + java.net.URLEncoder.encode(apiKey, "UTF-8")).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"; connectTimeout = 30000; readTimeout = 30000; doOutput = true
+                    setRequestProperty("X-Goog-Upload-Protocol", "resumable")
+                    setRequestProperty("X-Goog-Upload-Command", "start")
+                    setRequestProperty("X-Goog-Upload-Header-Content-Length", size.toString())
+                    setRequestProperty("X-Goog-Upload-Header-Content-Type", mime)
+                    setRequestProperty("Content-Type", "application/json")
+                }
+                start.outputStream.use { it.write(JSONObject().put("file", JSONObject().put("display_name", "OpenCut-highlights-${System.currentTimeMillis()}")).toString().toByteArray(Charsets.UTF_8)) }
+                val startCode = start.responseCode
+                val uploadUrl = start.getHeaderField("X-Goog-Upload-URL")
+                if (startCode !in 200..299 || uploadUrl.isNullOrBlank()) throw IllegalStateException("Gemini upload setup failed (HTTP $startCode).")
+                start.disconnect()
+                val upload = URL(uploadUrl).openConnection() as HttpURLConnection
+                upload.requestMethod = "POST"; upload.connectTimeout = 30000; upload.readTimeout = 120000; upload.doOutput = true
+                upload.setFixedLengthStreamingMode(size)
+                upload.setRequestProperty("X-Goog-Upload-Offset", "0")
+                upload.setRequestProperty("X-Goog-Upload-Command", "upload, finalize")
+                contentResolver.openInputStream(videoUri).use { input ->
+                    if (input == null) throw IllegalStateException("Cannot read selected video.")
+                    upload.outputStream.use { output -> input.copyTo(output, 64 * 1024) }
+                }
+                val uploadCode = upload.responseCode
+                val uploadBody = (if (uploadCode in 200..299) upload.inputStream else upload.errorStream).bufferedReader(Charsets.UTF_8).use { it.readText() }
+                upload.disconnect()
+                if (uploadCode !in 200..299) throw IllegalStateException("Gemini upload failed (HTTP $uploadCode): ${uploadBody.take(180)}")
+                val file = JSONObject(uploadBody).optJSONObject("file") ?: JSONObject(uploadBody)
+                val fileUri = file.optString("uri")
+                if (fileUri.isBlank()) throw IllegalStateException("Gemini returned no video URI.")
+                val prompt = """Analyze this video and identify the 5 most engaging highlight moments suitable for short clips. Return ONLY a JSON array with objects containing start and end timestamps in seconds and a short reason, e.g. [{"start":12.0,"end":42.0,"reason":"Strong action and payoff"}]. Prefer complete moments with a clear hook/payoff, avoid intros, recaps, credits and silent gaps. Keep each segment 15–60 seconds and do not invent events."""
+                val body = JSONObject().put("contents", org.json.JSONArray().put(JSONObject().put("parts", org.json.JSONArray()
+                    .put(JSONObject().put("text", prompt))
+                    .put(JSONObject().put("file_data", JSONObject().put("mime_type", mime).put("file_uri", fileUri)))))
+                    .put("generationConfig", JSONObject().put("responseMimeType", "application/json")).toString()
+                val connection = (URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + java.net.URLEncoder.encode(apiKey, "UTF-8")).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"; connectTimeout = 30000; readTimeout = 120000; doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                }
+                connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val code = connection.responseCode
+                val response = (if (code in 200..299) connection.inputStream else connection.errorStream).bufferedReader(Charsets.UTF_8).use { it.readText() }
+                connection.disconnect()
+                if (code !in 200..299) throw IllegalStateException("Gemini highlight analysis failed (HTTP $code): ${response.take(200)}")
+                val answer = JSONObject(response).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
+                    ?.optJSONArray("parts")?.optJSONObject(0)?.optString("text") ?: throw IllegalStateException("Gemini returned no highlights.")
+                val json = answer.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+                val array = org.json.JSONArray(json)
+                val parsed = mutableListOf<Triple<Double, Double, String>>()
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    val s = item.optDouble("start", Double.NaN)
+                    val e = item.optDouble("end", Double.NaN)
+                    val reason = item.optString("reason", "Suggested highlight")
+                    if (s.isFinite() && e > s && s >= 0) parsed.add(Triple(s, e, reason))
+                }
+                highlights = parsed
+                if (highlights.isEmpty()) throw IllegalStateException("Gemini returned no valid timestamp ranges.")
+            } catch (e: Exception) {
+                failure = e.message ?: "AI highlight analysis failed."
+            }
+            runOnUiThread {
+                aiHighlightButton.isEnabled = true
+                if (highlights.isEmpty()) {
+                    aiStatus.text = failure ?: "No AI highlights found."
+                    return@runOnUiThread
+                }
+                val labels = highlights.map { (s, e, reason) ->
+                    String.format(Locale.US, "%s–%s  •  %s", formatClock((s * 1000).toLong()), formatClock((e * 1000).toLong()), reason)
+                }.toTypedArray()
+                aiStatus.text = "Gemini suggested ${highlights.size} highlight ranges. Review before using them."
+                android.app.AlertDialog.Builder(this@MainActivity)
+                    .setTitle("AI highlight suggestions")
+                    .setItems(labels) { _, which ->
+                        val (s, e, _) = highlights[which]
+                        startInput.setText(String.format(Locale.US, "%.2f", s))
+                        endInput.setText(String.format(Locale.US, "%.2f", e))
+                        player?.seekTo((s * 1000).toLong())
+                        status.text = "Applied suggested trim range. Preview it before exporting."
+                    }.setNegativeButton("Close", null).show()
+            }
+        }.start()
+    }
 
     private fun scanVisualHighlights() {
         val uri = selectedVideo
