@@ -14,6 +14,11 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import android.text.SpannableString
+import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
+import android.graphics.Typeface
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -24,6 +29,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.Effects
+import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.Presentation
+import androidx.media3.effect.ScaleAndRotateTransformation
+import androidx.media3.effect.TextOverlay
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
@@ -54,7 +64,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playPauseButton: Button
     private lateinit var speedButton: Button
     private lateinit var timelineContainer: LinearLayout
+    private lateinit var aspectRatioButton: Button
+    private lateinit var rotateButton: Button
+    private lateinit var muteButton: Button
+    private lateinit var overlayInput: EditText
     private var previewSpeed = 1.0f
+    private var outputRatio: String = "Original"
+    private var rotationDegrees = 0f
+    private var muteAudio = false
 
     private val pickVideos = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) {
@@ -234,6 +251,60 @@ class MainActivity : AppCompatActivity() {
         trimRow.addView(endInput, LinearLayout.LayoutParams(0, dp(52), 1f).apply { leftMargin = dp(6) })
         root.addView(trimRow)
 
+        root.addView(sectionTitle("CANVAS & AUDIO", white))
+        val editOptions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        aspectRatioButton = Button(this).apply {
+            text = "Ratio: Original"
+            textSize = 11f
+            setOnClickListener {
+                val choices = arrayOf("Original", "YouTube 16:9", "Shorts 9:16", "Square 1:1")
+                android.app.AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Export aspect ratio")
+                    .setItems(choices) { _, which ->
+                        outputRatio = choices[which]
+                        text = "Ratio: " + when (outputRatio) {
+                            "YouTube 16:9" -> "16:9"
+                            "Shorts 9:16" -> "9:16"
+                            "Square 1:1" -> "1:1"
+                            else -> "Original"
+                        }
+                    }.show()
+            }
+        }
+        rotateButton = Button(this).apply {
+            text = "Rotate 0°"
+            textSize = 11f
+            setOnClickListener {
+                rotationDegrees = (rotationDegrees + 90f) % 360f
+                text = "Rotate ${rotationDegrees.toInt()}°"
+            }
+        }
+        editOptions.addView(aspectRatioButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(4) })
+        editOptions.addView(rotateButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(4) })
+        root.addView(editOptions)
+
+        muteButton = Button(this).apply {
+            text = "Audio: On"
+            setOnClickListener {
+                muteAudio = !muteAudio
+                text = if (muteAudio) "Audio: Muted" else "Audio: On"
+            }
+        }
+        root.addView(muteButton, matchWrap())
+        overlayInput = EditText(this).apply {
+            hint = "Optional text overlay (burned into export)"
+            setHintTextColor(muted)
+            setTextColor(white)
+            setSingleLine(false)
+            minLines = 1
+            maxLines = 3
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundColor(panel)
+        }
+        root.addView(overlayInput, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+
         exportButton = Button(this).apply {
             text = "Export trimmed MP4"
             isEnabled = false
@@ -262,8 +333,9 @@ class MainActivity : AppCompatActivity() {
             "✓  Select, reorder, and remove timeline clips",
             "✓  Preview speed and playhead-based trim markers",
             "✓  Trim/export the selected clip as MP4",
-            "○  Combined multi-clip export and visual effects",
-            "○  Burned-in subtitles and AI speech transcription",
+            "✓  Export aspect ratios: original, 16:9, 9:16, square",
+            "✓  Rotate, mute audio, and burn in a static text overlay",
+            "○  Combined multi-clip export and AI speech transcription",
             "○  Automatic highlight/Shorts detection"
         )
         roadmap.forEach { line ->
@@ -429,7 +501,34 @@ class MainActivity : AppCompatActivity() {
             .setUri(uri)
             .setClippingConfiguration(clipConfig)
             .build()
-        val edited = EditedMediaItem.Builder(mediaItem).build()
+        val videoEffects = mutableListOf<androidx.media3.common.Effect>()
+        when (outputRatio) {
+            "YouTube 16:9" -> videoEffects.add(
+                Presentation.createForAspectRatio(16f / 9f, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP)
+            )
+            "Shorts 9:16" -> videoEffects.add(
+                Presentation.createForAspectRatio(9f / 16f, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP)
+            )
+            "Square 1:1" -> videoEffects.add(
+                Presentation.createForAspectRatio(1f, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP)
+            )
+        }
+        if (rotationDegrees != 0f) {
+            videoEffects.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(rotationDegrees).build())
+        }
+        val overlayText = overlayInput.text.toString().trim()
+        if (overlayText.isNotEmpty()) {
+            val styledText = SpannableString(overlayText).apply {
+                setSpan(ForegroundColorSpan(android.graphics.Color.WHITE), 0, length, 0)
+                setSpan(BackgroundColorSpan(0xCC000000.toInt()), 0, length, 0)
+                setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
+            }
+            videoEffects.add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(styledText))))
+        }
+        val edited = EditedMediaItem.Builder(mediaItem)
+            .setRemoveAudio(muteAudio)
+            .setEffects(Effects(emptyList(), videoEffects))
+            .build()
 
         val listener = object : Transformer.Listener {
             override fun onCompleted(composition: androidx.media3.transformer.Composition, exportResult: ExportResult) {
