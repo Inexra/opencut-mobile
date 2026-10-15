@@ -193,8 +193,8 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         appHeader.addView(TextView(this).apply {
-            text = "OpenCut Mobile"
-            textSize = 25f
+            text = "OpenCut"
+            textSize = 24f
             setTextColor(white)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }, LinearLayout.LayoutParams(0, -2, 1f))
@@ -204,15 +204,15 @@ class MainActivity : AppCompatActivity() {
         }, LinearLayout.LayoutParams(-2, dp(48)))
         root.addView(appHeader)
         root.addView(TextView(this).apply {
-            text = "Native video editing • local-first • open source"
-            textSize = 13f
+            text = "Studio  •  New project"
+            textSize = 12f
             setTextColor(muted)
             setPadding(0, dp(4), 0, dp(18))
         })
 
         val toolDockScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; setBackgroundColor(0xFF191820.toInt()) }
         val toolDock = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(6), dp(6), dp(6), dp(6)) }
-        val toolItems = listOf("▶ Preview" to "VIDEO PREVIEW", "✂ Edit" to "TRIM RANGE", "♫ Audio" to "CANVAS & AUDIO", "T Text" to "CAPTION OVERLAY & STYLE PREVIEW", "✦ AI" to "GEMINI AI ASSISTANT", "⇧ Export" to "EXPORT")
+        val toolItems = listOf("▶\nPreview" to "VIDEO PREVIEW", "✂\nEdit" to "TRIM RANGE", "♫\nAudio" to "CANVAS & AUDIO", "T\nText" to "CAPTION OVERLAY & STYLE PREVIEW", "CC\nCaptions" to "CAPTION OVERLAY & STYLE PREVIEW", "✦\nAI" to "GEMINI AI ASSISTANT", "⇧\nExport" to "EXPORT")
         val toolButtons = mutableListOf<TextView>()
         toolItems.forEach { item ->
             val tool = TextView(this).apply {
@@ -220,8 +220,9 @@ class MainActivity : AppCompatActivity() {
                 textSize = 11f
                 gravity = Gravity.CENTER
                 setTextColor(white)
-                setPadding(dp(6), dp(5), dp(6), dp(5))
-                setBackgroundColor(if (item.first == "▶ Preview") accent else 0xFF292633.toInt())
+                setPadding(dp(4), dp(5), dp(4), dp(5))
+                setLineSpacing(0f, 0.92f)
+                setBackgroundColor(if (item.first == "▶\nPreview") accent else 0xFF292633.toInt())
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
@@ -232,7 +233,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             toolButtons.add(tool)
-            toolDock.addView(tool, LinearLayout.LayoutParams(dp(76), dp(48)).apply { rightMargin = dp(4) })
+            toolDock.addView(tool, LinearLayout.LayoutParams(dp(66), dp(50)).apply { rightMargin = dp(4) })
         }
         toolDockScroll.addView(toolDock)
         screenRoot.addView(toolDockScroll, LinearLayout.LayoutParams(-1, dp(58)))
@@ -1270,11 +1271,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun showEditorPanel(panelName: String) {
         val selectedSection = when (panelName) {
-            "✂ Edit" -> "TRIM RANGE"
-            "♫ Audio" -> "CANVAS & AUDIO"
-            "T Text" -> "CAPTION OVERLAY & STYLE PREVIEW"
-            "AI" -> "GEMINI AI ASSISTANT"
-            "⇧ Export" -> "EXPORT"
+            "✂\nEdit" -> "TRIM RANGE"
+            "♫\nAudio" -> "CANVAS & AUDIO"
+            "T\nText" -> "CAPTION OVERLAY & STYLE PREVIEW"
+            "CC\nCaptions" -> "CAPTION OVERLAY & STYLE PREVIEW"
+            "✦\nAI" -> "GEMINI AI ASSISTANT"
+            "⇧\nExport" -> "EXPORT"
             else -> null
         }
         var currentSection: String? = null
@@ -1296,7 +1298,7 @@ class MainActivity : AppCompatActivity() {
                     "GEMINI AI ASSISTANT" -> currentSection = "GEMINI AI ASSISTANT"
                     "EXPORT", "FEATURE STATUS" -> currentSection = "EXPORT"
                 }
-                if (title == selectedSection || (panelName == "▶ Preview" && title == "VIDEO PREVIEW")) target = child
+                if (title == selectedSection || (panelName == "▶\nPreview" && title == "VIDEO PREVIEW")) target = child
             }
             child.visibility = if (!reachedTools || selectedSection == currentSection) View.VISIBLE else View.GONE
         }
