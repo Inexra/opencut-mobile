@@ -101,6 +101,7 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
     private lateinit var aspectRatioButton: Button
     private lateinit var rotateButton: Button
     private lateinit var motionButton: Button
+    private lateinit var transitionButton: Button
     private lateinit var titleAnimationButton: Button
     private lateinit var trimFineButton: Button
     private lateinit var highlightButton: Button
@@ -124,6 +125,7 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
     private var motionScale = 1f
     private var motionRotation = 0f
     private var titleAnimation = "Fade in"
+    private var transitionPreset = "Off"
     private val generatedCaptionCues = mutableListOf<CaptionCue>()
     private var muteAudio = false
 
@@ -525,6 +527,22 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
         editOptions.addView(motionButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(3) })
         root.addView(editOptions)
 
+        transitionButton = Button(this).apply {
+            text = "Transition: Off"
+            setOnClickListener {
+                val choices = arrayOf("Off", "Black flash (0.25s)", "White flash (0.25s)")
+                android.app.AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Between-clip transition")
+                    .setMessage("Flash transitions insert a short full-frame flash between clips during export. They are not crossfades.")
+                    .setItems(choices) { _, which ->
+                        transitionPreset = choices[which]
+                        text = "Transition: " + transitionPreset
+                        status.text = if (which == 0) "Transitions disabled." else "Selected $transitionPreset for the next timeline export."
+                    }.show()
+            }
+        }
+        root.addView(transitionButton, matchWrap())
+
         muteButton = Button(this).apply {
             text = "Audio: On"
             setOnClickListener {
@@ -717,7 +735,7 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
             "✓  Import multiple videos into a clip list",
             "✓  Select, reorder, and remove timeline clips",
             "✓  Preview speed and playhead-based trim markers",
-            "✓  Export the ordered timeline as one MP4 (straight cuts)",
+            "✓  Export the ordered timeline as one MP4 with optional flash transitions",
             "✓  Export aspect ratios: original, 16:9, 9:16, square",
             "✓  Rotate, mute audio, and burn in a static text overlay",
             "✓  Five caption overlay styles with live preview and export",
@@ -1472,12 +1490,31 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
         } else {
             timelineClips.toList()
         }
-        val editedItems = clipsToExport.map { clip ->
+        val editedItems = mutableListOf<EditedMediaItem>()
+        val needsFlash = transitionPreset != "Off" && clipsToExport.size > 1
+        val flashFile = if (needsFlash) {
+            File(cacheDir, "opencut_transition_${if (transitionPreset.startsWith("White")) "white" else "black"}.png").also { file ->
+                val bitmap = android.graphics.Bitmap.createBitmap(64, 64, android.graphics.Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(if (transitionPreset.startsWith("White")) android.graphics.Color.WHITE else android.graphics.Color.BLACK)
+                file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                bitmap.recycle()
+            }
+        } else null
+        clipsToExport.forEachIndexed { index, clip ->
             val sourceItem = if (clip.uri == uri) mediaItem else MediaItem.fromUri(clip.uri)
-            EditedMediaItem.Builder(sourceItem)
-                .setRemoveAudio(muteAudio)
-                .setEffects(Effects(emptyList(), videoEffects))
-                .build()
+            editedItems.add(
+                EditedMediaItem.Builder(sourceItem)
+                    .setRemoveAudio(muteAudio)
+                    .setEffects(Effects(emptyList(), videoEffects))
+                    .build()
+            )
+            if (needsFlash && index < clipsToExport.lastIndex && flashFile != null) {
+                val flashItem = MediaItem.Builder()
+                    .setUri(Uri.fromFile(flashFile))
+                    .setImageDurationMs(250L)
+                    .build()
+                editedItems.add(EditedMediaItem.Builder(flashItem).build())
+            }
         }
         val composition = Composition.Builder(
             EditedMediaItemSequence.withAudioAndVideoFrom(editedItems)
