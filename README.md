@@ -6,7 +6,9 @@ A free, open-source native Kotlin video-editor starter for Android 17 / API 36 a
 - Native Android interface
 - Select a local video using Android's document picker
 - Preview video with AndroidX Media3 ExoPlayer
-- Set trim start and end times in seconds
+- Play/pause and preview-speed controls (1×, 1.25×, 1.5×, 2×)
+- Set trim start/end from the current preview playhead
+- Set trim start and end times manually in seconds
 - Export a trimmed MP4 using AndroidX Media3 Transformer
 - Progress and completion/error feedback
 - No account, watermark, ads, cloud service, or paid API required
