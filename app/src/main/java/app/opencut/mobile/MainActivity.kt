@@ -1264,7 +1264,7 @@ class MainActivity : AppCompatActivity() {
             child.visibility = if (!reachedTools || selectedSection == currentSection) View.VISIBLE else View.GONE
         }
         editorScroll.post {
-            editorScroll.smoothScrollTo(0, if (panelName == "Preview" || target == null) 0 else (target!!.top - dp(12)).coerceAtLeast(0))
+            editorScroll.smoothScrollTo(0, ((target?.top ?: 0) - dp(12)).coerceAtLeast(0))
         }
     }
 
