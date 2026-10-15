@@ -47,6 +47,11 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 @UnstableApi
 class MainActivity : AppCompatActivity() {
@@ -75,6 +80,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var captionPreview: TextView
     private lateinit var captionStyleButton: Button
     private lateinit var captionToolsStatus: TextView
+    private lateinit var aiTopicInput: EditText
+    private lateinit var aiDescriptionInput: EditText
+    private lateinit var aiStatus: TextView
+    private lateinit var geminiKeyButton: Button
     private var captionStyle = "Classic"
     private var previewSpeed = 1.0f
     private var outputRatio: String = "Original"
@@ -424,6 +433,50 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(captionToolsStatus)
 
+        root.addView(sectionTitle("GEMINI AI ASSISTANT", white))
+        root.addView(TextView(this).apply {
+            text = "Use your own Gemini API key for AI-generated YouTube titles, descriptions and hashtags. Your key is stored encrypted on this device and is not included in the public repository."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(2), 0, dp(8))
+        })
+        geminiKeyButton = Button(this).apply {
+            text = if (getGeminiApiKey().isNullOrBlank()) "Set Gemini API key" else "Gemini API key: Saved (tap to change)"
+            setOnClickListener { showGeminiKeyDialog() }
+        }
+        root.addView(geminiKeyButton, matchWrap())
+        aiTopicInput = EditText(this).apply {
+            hint = "Video topic or short summary"
+            setHintTextColor(muted)
+            setTextColor(white)
+            minLines = 1
+            maxLines = 3
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundColor(panel)
+        }
+        root.addView(aiTopicInput, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        aiDescriptionInput = EditText(this).apply {
+            hint = "AI title, description and hashtags will appear here"
+            setHintTextColor(muted)
+            setTextColor(white)
+            minLines = 4
+            maxLines = 8
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundColor(panel)
+        }
+        root.addView(aiDescriptionInput, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        root.addView(Button(this).apply {
+            text = "Generate with Gemini AI"
+            setOnClickListener { generateGeminiDescription() }
+        }, matchWrap())
+        aiStatus = TextView(this).apply {
+            text = "AI generation uses your Gemini API quota and requires internet access."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(4), 0, dp(8))
+        }
+        root.addView(aiStatus)
+
         exportButton = Button(this).apply {
             text = "Export trimmed MP4"
             isEnabled = false
@@ -468,6 +521,125 @@ class MainActivity : AppCompatActivity() {
                 setPadding(0, dp(5), 0, dp(5))
             })
         }
+    }
+
+    private fun secureAiPreferences(): android.content.SharedPreferences {
+        val masterKey = MasterKey.Builder(this)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
+            this,
+            "opencut_secure_ai",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    private fun getGeminiApiKey(): String? {
+        return try { secureAiPreferences().getString("gemini_api_key", null) } catch (_: Exception) { null }
+    }
+
+    private fun showGeminiKeyDialog() {
+        val input = EditText(this).apply {
+            hint = "Paste your Gemini API key"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(getGeminiApiKey().orEmpty())
+            setSingleLine(true)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Gemini API key")
+            .setMessage("Create a key in Google AI Studio. The key is stored encrypted on this device. Never share your key or commit it to GitHub.")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val key = input.text.toString().trim()
+                if (key.isBlank()) {
+                    secureAiPreferences().edit().remove("gemini_api_key").apply()
+                    geminiKeyButton.text = "Set Gemini API key"
+                    aiStatus.text = "Gemini API key removed."
+                } else {
+                    try {
+                        secureAiPreferences().edit().putString("gemini_api_key", key).apply()
+                        geminiKeyButton.text = "Gemini API key: Saved (tap to change)"
+                        aiStatus.text = "API key saved encrypted on this device."
+                    } catch (e: Exception) {
+                        aiStatus.text = "Could not securely save key: ${e.message}"
+                    }
+                }
+            }
+            .setNeutralButton("Remove key") { _, _ ->
+                try { secureAiPreferences().edit().remove("gemini_api_key").apply() } catch (_: Exception) {}
+                geminiKeyButton.text = "Set Gemini API key"
+                aiStatus.text = "Gemini API key removed."
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun generateGeminiDescription() {
+        val apiKey = getGeminiApiKey()
+        if (apiKey.isNullOrBlank()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Gemini API key required")
+                .setMessage("Add your own Gemini API key first. You can create one in Google AI Studio; usage is subject to Google's current limits and terms.")
+                .setPositiveButton("Add key") { _, _ -> showGeminiKeyDialog() }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+        val topic = aiTopicInput.text.toString().trim()
+        val caption = captionInput.text.toString().trim()
+        if (topic.isBlank() && caption.isBlank()) {
+            aiStatus.text = "Enter a video topic or caption first."
+            return
+        }
+        aiStatus.text = "Generating title, description and hashtags…"
+        val prompt = "Create YouTube metadata for a video. Return a concise clickable title, a natural description, and 8-12 relevant hashtags. Do not invent facts not present in the input. Topic/summary: ${topic.ifBlank { "(not supplied)" }}. User-provided caption/context: ${caption.ifBlank { "(not supplied)" }}. Output plain text with headings Title, Description, Hashtags."
+        Thread {
+            var resultText: String? = null
+            var errorText: String? = null
+            var connection: HttpURLConnection? = null
+            try {
+                val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + java.net.URLEncoder.encode(apiKey, "UTF-8"))
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 20000
+                    readTimeout = 45000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                }
+                val body = JSONObject()
+                    .put("contents", org.json.JSONArray().put(JSONObject().put("parts", org.json.JSONArray().put(JSONObject().put("text", prompt)))))
+                    .toString()
+                connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val code = connection.responseCode
+                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                val response = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                if (code !in 200..299) {
+                    val message = try { JSONObject(response).optJSONObject("error")?.optString("message") } catch (_: Exception) { null }
+                    errorText = "Gemini request failed (HTTP $code): ${message ?: response.take(240)}"
+                } else {
+                    val rootJson = JSONObject(response)
+                    resultText = rootJson.optJSONArray("candidates")
+                        ?.optJSONObject(0)?.optJSONObject("content")
+                        ?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
+                        ?.takeIf { !it.isNullOrBlank() }
+                    if (resultText == null) errorText = "Gemini returned no text. Check your key, model access, and quota."
+                }
+            } catch (e: Exception) {
+                errorText = "AI request failed: ${e.message ?: "unknown error"}"
+            } finally {
+                connection?.disconnect()
+            }
+            runOnUiThread {
+                if (resultText != null) {
+                    aiDescriptionInput.setText(resultText)
+                    aiStatus.text = "Generated. Review and edit the result before using it."
+                } else {
+                    aiStatus.text = errorText ?: "Could not generate metadata."
+                }
+            }
+        }.start()
     }
 
     private fun toSrtTime(seconds: Double): String {
