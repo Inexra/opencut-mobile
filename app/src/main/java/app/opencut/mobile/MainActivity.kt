@@ -11,6 +11,9 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
+import android.widget.SeekBar
+import android.media.MediaMetadataRetriever
 import android.text.TextWatcher
 import android.text.Editable
 import android.widget.LinearLayout
@@ -62,6 +65,21 @@ class MainActivity : AppCompatActivity() {
     private var player: ExoPlayer? = null
     private var transformer: Transformer? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val playheadUpdater = object : Runnable {
+        override fun run() {
+            val active = player
+            if (::playheadSeekBar.isInitialized && active != null && !playheadSeekBar.isPressed) {
+                val duration = active.duration
+                if (duration > 0L) {
+                    playheadSeekBar.progress = ((active.currentPosition.toDouble() / duration) * 1000.0).toInt().coerceIn(0, 1000)
+                    playheadTime.text = "${formatClock(active.currentPosition)} / ${formatClock(duration)}"
+                } else {
+                    playheadTime.text = "${formatClock(active.currentPosition)} / --:--"
+                }
+            }
+            handler.postDelayed(this, 300)
+        }
+    }
 
     private lateinit var status: TextView
     private lateinit var startInput: EditText
@@ -73,6 +91,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playPauseButton: Button
     private lateinit var speedButton: Button
     private lateinit var timelineContainer: LinearLayout
+    private lateinit var playheadSeekBar: SeekBar
+    private lateinit var playheadTime: TextView
     private lateinit var aspectRatioButton: Button
     private lateinit var rotateButton: Button
     private lateinit var muteButton: Button
@@ -145,6 +165,7 @@ class MainActivity : AppCompatActivity() {
         window.statusBarColor = android.graphics.Color.rgb(17, 17, 22)
         window.navigationBarColor = android.graphics.Color.rgb(17, 17, 22)
         buildUi()
+        handler.post(playheadUpdater)
     }
 
     private fun buildUi() {
@@ -263,6 +284,36 @@ class MainActivity : AppCompatActivity() {
         timelineScroll.addView(timelineContainer)
         root.addView(timelineScroll, LinearLayout.LayoutParams(-1, dp(150)))
         renderTimeline()
+
+        val playheadRow = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), dp(8), dp(4), dp(4))
+        }
+        playheadTime = TextView(this).apply {
+            text = "00:00 / --:--"
+            textSize = 12f
+            setTextColor(muted)
+        }
+        playheadSeekBar = SeekBar(this).apply {
+            max = 1000
+            progress = 0
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, value: Int, fromUser: Boolean) {
+                    val active = player ?: return
+                    val duration = active.duration
+                    if (duration > 0L) {
+                        val position = (duration * value / 1000L).coerceIn(0L, duration)
+                        playheadTime.text = "${formatClock(position)} / ${formatClock(duration)}"
+                        if (fromUser) active.seekTo(position)
+                    }
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            })
+        }
+        playheadRow.addView(playheadTime)
+        playheadRow.addView(playheadSeekBar, LinearLayout.LayoutParams(-1, dp(36)))
+        root.addView(playheadRow)
 
         val playbackRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -924,6 +975,29 @@ class MainActivity : AppCompatActivity() {
                 textSize = 12f
                 setOnClickListener { selectTimelineClip(index) }
             }
+            val thumbnail = ImageView(this).apply {
+                tag = clip.uri.toString()
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(0xFF111116.toInt())
+                contentDescription = "Thumbnail for ${clip.name}"
+            }
+            row.addView(thumbnail, LinearLayout.LayoutParams(-1, dp(66)).apply { bottomMargin = dp(4) })
+            Thread {
+                val bitmap = try {
+                    MediaMetadataRetriever().let { retriever ->
+                        try {
+                            retriever.setDataSource(this@MainActivity, clip.uri)
+                            retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        } finally {
+                            retriever.release()
+                        }
+                    }
+                } catch (_: Exception) { null }
+                if (bitmap != null) runOnUiThread {
+                    if (thumbnail.tag == clip.uri.toString()) thumbnail.setImageBitmap(bitmap)
+                    else bitmap.recycle()
+                }
+            }.start()
             row.addView(select, matchWrap())
             val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             val up = Button(this).apply {
@@ -970,6 +1044,11 @@ class MainActivity : AppCompatActivity() {
             row.addView(actions)
             timelineContainer.addView(row, LinearLayout.LayoutParams(dp(190), dp(128)).apply { rightMargin = dp(8) })
         }
+    }
+
+    private fun formatClock(milliseconds: Long): String {
+        val totalSeconds = (milliseconds.coerceAtLeast(0L) / 1000L)
+        return String.format(Locale.US, "%02d:%02d", totalSeconds / 60L, totalSeconds % 60L)
     }
 
     private fun loadVideo(uri: Uri) {
