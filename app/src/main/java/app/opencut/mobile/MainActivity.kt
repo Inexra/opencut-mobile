@@ -49,6 +49,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progress: ProgressBar
     private lateinit var playerView: PlayerView
     private lateinit var pickButton: Button
+    private lateinit var playPauseButton: Button
+    private lateinit var speedButton: Button
+    private var previewSpeed = 1.0f
 
     private val pickVideo = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -116,6 +119,61 @@ class MainActivity : AppCompatActivity() {
             ).apply { topMargin = dp(14); bottomMargin = dp(14) }
         }
         root.addView(playerView)
+
+        val playbackRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        playPauseButton = Button(this).apply {
+            text = "▶ Play / Pause"
+            setOnClickListener {
+                val activePlayer = player
+                if (activePlayer != null) {
+                    if (activePlayer.isPlaying) {
+                        activePlayer.pause()
+                        text = "▶ Play"
+                    } else {
+                        activePlayer.play()
+                        text = "Ⅱ Pause"
+                    }
+                } else {
+                    status.text = "Import a video first."
+                }
+            }
+        }
+        speedButton = Button(this).apply {
+            text = "Speed 1×"
+            setOnClickListener {
+                previewSpeed = when (previewSpeed) {
+                    1.0f -> 1.25f
+                    1.25f -> 1.5f
+                    1.5f -> 2.0f
+                    else -> 1.0f
+                }
+                player?.setPlaybackSpeed(previewSpeed)
+                text = "Speed ${previewSpeed}×"
+            }
+        }
+        playbackRow.addView(playPauseButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(4) })
+        playbackRow.addView(speedButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(4) })
+        root.addView(playbackRow)
+
+        val markerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        val markStartButton = Button(this).apply {
+            text = "Set start at playhead"
+            textSize = 11f
+            setOnClickListener { setTrimFromPlayhead(isStart = true) }
+        }
+        val markEndButton = Button(this).apply {
+            text = "Set end at playhead"
+            textSize = 11f
+            setOnClickListener { setTrimFromPlayhead(isStart = false) }
+        }
+        markerRow.addView(markStartButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(4) })
+        markerRow.addView(markEndButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(4) })
+        root.addView(markerRow)
 
         root.addView(sectionTitle("TRIM RANGE", white))
         root.addView(TextView(this).apply {
@@ -198,6 +256,24 @@ class MainActivity : AppCompatActivity() {
             exo.setMediaItem(MediaItem.fromUri(uri))
             exo.prepare()
             exo.playWhenReady = false
+            exo.setPlaybackSpeed(previewSpeed)
+        }
+    }
+
+    private fun setTrimFromPlayhead(isStart: Boolean) {
+        val activePlayer = player
+        if (selectedVideo == null || activePlayer == null) {
+            status.text = "Import a video and wait for its preview to load first."
+            return
+        }
+        val seconds = activePlayer.currentPosition.coerceAtLeast(0L) / 1000.0
+        val formatted = String.format(Locale.US, "%.2f", seconds)
+        if (isStart) {
+            startInput.setText(formatted)
+            status.text = "Trim start set to ${formatted}s."
+        } else {
+            endInput.setText(formatted)
+            status.text = "Trim end set to ${formatted}s."
         }
     }
 
