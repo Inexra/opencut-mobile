@@ -9,6 +9,9 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.text.TextWatcher
+import android.text.Editable
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
@@ -68,6 +71,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rotateButton: Button
     private lateinit var muteButton: Button
     private lateinit var overlayInput: EditText
+    private lateinit var captionInput: EditText
+    private lateinit var captionPreview: TextView
+    private lateinit var captionStyleButton: Button
+    private var captionStyle = "Classic"
     private var previewSpeed = 1.0f
     private var outputRatio: String = "Original"
     private var rotationDegrees = 0f
@@ -161,7 +168,29 @@ class MainActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(220)
             ).apply { topMargin = dp(14); bottomMargin = dp(14) }
         }
-        root.addView(playerView)
+        val previewFrame = FrameLayout(this).apply {
+            setBackgroundColor(0xFF050507.toInt())
+            layoutParams = LinearLayout.LayoutParams(-1, dp(220)).apply {
+                topMargin = dp(14)
+                bottomMargin = dp(14)
+            }
+        }
+        playerView.layoutParams = FrameLayout.LayoutParams(-1, -1)
+        previewFrame.addView(playerView)
+        captionPreview = TextView(this).apply {
+            text = ""
+            textSize = 22f
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            visibility = View.GONE
+            setShadowLayer(2f, 1f, 1f, android.graphics.Color.BLACK)
+        }
+        previewFrame.addView(captionPreview, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+            leftMargin = dp(12)
+            rightMargin = dp(12)
+            bottomMargin = dp(16)
+        })
+        root.addView(previewFrame)
 
         val playbackRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -305,6 +334,45 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(overlayInput, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
 
+        root.addView(sectionTitle("CAPTION OVERLAY & STYLE PREVIEW", white))
+        captionInput = EditText(this).apply {
+            hint = "Type a caption to preview and burn into export"
+            setHintTextColor(muted)
+            setTextColor(white)
+            setSingleLine(false)
+            minLines = 2
+            maxLines = 4
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundColor(panel)
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    updateCaptionPreview()
+                }
+                override fun afterTextChanged(s: Editable?) {}
+            })
+        }
+        root.addView(captionInput, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        captionStyleButton = Button(this).apply {
+            text = "Caption style: Classic"
+            setOnClickListener {
+                val styles = arrayOf("Classic", "Bold Yellow", "Boxed", "Minimal", "Karaoke")
+                android.app.AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Choose caption style")
+                    .setItems(styles) { _, which ->
+                        captionStyle = styles[which]
+                        text = "Caption style: $captionStyle"
+                        updateCaptionPreview()
+                    }.show()
+            }
+        }
+        root.addView(captionStyleButton, matchWrap())
+        root.addView(TextView(this).apply {
+            text = "The caption preview appears over the video above. The selected style is burned into the exported MP4."
+            textSize = 12f
+            setTextColor(muted)
+        })
+
         exportButton = Button(this).apply {
             text = "Export trimmed MP4"
             isEnabled = false
@@ -335,7 +403,8 @@ class MainActivity : AppCompatActivity() {
             "✓  Trim/export the selected clip as MP4",
             "✓  Export aspect ratios: original, 16:9, 9:16, square",
             "✓  Rotate, mute audio, and burn in a static text overlay",
-            "○  Combined multi-clip export and AI speech transcription",
+            "✓  Five caption overlay styles with live preview and export",
+            "○  Timed AI speech transcription and automatic highlight detection",
             "○  Automatic highlight/Shorts detection"
         )
         roadmap.forEach { line ->
@@ -345,6 +414,74 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(if (line.startsWith("✓")) 0xFFB9F4D0.toInt() else muted)
                 setPadding(0, dp(5), 0, dp(5))
             })
+        }
+    }
+
+    private fun buildCaptionSpannable(value: String): SpannableString {
+        return SpannableString(value).apply {
+            when (captionStyle) {
+                "Bold Yellow" -> {
+                    setSpan(ForegroundColorSpan(0xFFFFE45E.toInt()), 0, length, 0)
+                    setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
+                }
+                "Boxed" -> {
+                    setSpan(ForegroundColorSpan(android.graphics.Color.WHITE), 0, length, 0)
+                    setSpan(BackgroundColorSpan(0xE6000000.toInt()), 0, length, 0)
+                    setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
+                }
+                "Minimal" -> {
+                    setSpan(ForegroundColorSpan(android.graphics.Color.WHITE), 0, length, 0)
+                }
+                "Karaoke" -> {
+                    setSpan(ForegroundColorSpan(0xFF72F1A5.toInt()), 0, length, 0)
+                    setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
+                }
+                else -> {
+                    setSpan(ForegroundColorSpan(android.graphics.Color.WHITE), 0, length, 0)
+                    setSpan(BackgroundColorSpan(0xB8000000.toInt()), 0, length, 0)
+                    setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
+                }
+            }
+        }
+    }
+
+    private fun updateCaptionPreview() {
+        if (!::captionPreview.isInitialized || !::captionInput.isInitialized) return
+        val value = captionInput.text.toString().trim()
+        captionPreview.text = value
+        captionPreview.visibility = if (value.isEmpty()) View.GONE else View.VISIBLE
+        captionPreview.setPadding(dp(12), dp(6), dp(12), dp(6))
+        when (captionStyle) {
+            "Bold Yellow" -> {
+                captionPreview.setTextColor(0xFFFFE45E.toInt())
+                captionPreview.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                captionPreview.typeface = Typeface.DEFAULT_BOLD
+                captionPreview.setShadowLayer(3f, 2f, 2f, android.graphics.Color.BLACK)
+            }
+            "Boxed" -> {
+                captionPreview.setTextColor(android.graphics.Color.WHITE)
+                captionPreview.setBackgroundColor(0xE6000000.toInt())
+                captionPreview.typeface = Typeface.DEFAULT_BOLD
+                captionPreview.setShadowLayer(0f, 0f, 0f, android.graphics.Color.TRANSPARENT)
+            }
+            "Minimal" -> {
+                captionPreview.setTextColor(android.graphics.Color.WHITE)
+                captionPreview.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                captionPreview.typeface = Typeface.DEFAULT
+                captionPreview.setShadowLayer(2f, 1f, 1f, android.graphics.Color.BLACK)
+            }
+            "Karaoke" -> {
+                captionPreview.setTextColor(0xFF72F1A5.toInt())
+                captionPreview.setBackgroundColor(0x99000000.toInt())
+                captionPreview.typeface = Typeface.DEFAULT_BOLD
+                captionPreview.setShadowLayer(1f, 1f, 1f, android.graphics.Color.BLACK)
+            }
+            else -> {
+                captionPreview.setTextColor(android.graphics.Color.WHITE)
+                captionPreview.setBackgroundColor(0xB8000000.toInt())
+                captionPreview.typeface = Typeface.DEFAULT_BOLD
+                captionPreview.setShadowLayer(1f, 1f, 1f, android.graphics.Color.BLACK)
+            }
         }
     }
 
@@ -516,6 +653,7 @@ class MainActivity : AppCompatActivity() {
         if (rotationDegrees != 0f) {
             videoEffects.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(rotationDegrees).build())
         }
+        val textOverlays = mutableListOf<TextOverlay>()
         val overlayText = overlayInput.text.toString().trim()
         if (overlayText.isNotEmpty()) {
             val styledText = SpannableString(overlayText).apply {
@@ -523,8 +661,14 @@ class MainActivity : AppCompatActivity() {
                 setSpan(BackgroundColorSpan(0xCC000000.toInt()), 0, length, 0)
                 setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
             }
-            videoEffects.add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(styledText))))
+            textOverlays.add(TextOverlay.createStaticTextOverlay(styledText))
         }
+        val captionText = captionInput.text.toString().trim()
+        if (captionText.isNotEmpty()) {
+            val styledCaption = buildCaptionSpannable(captionText)
+            textOverlays.add(TextOverlay.createStaticTextOverlay(styledCaption))
+        }
+        if (textOverlays.isNotEmpty()) videoEffects.add(OverlayEffect(textOverlays))
         val edited = EditedMediaItem.Builder(mediaItem)
             .setRemoveAudio(muteAudio)
             .setEffects(Effects(emptyList(), videoEffects))
