@@ -211,6 +211,7 @@ class MainActivity : AppCompatActivity() {
         val toolDockScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; setBackgroundColor(0xFF191820.toInt()) }
         val toolDock = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(6), dp(6), dp(6), dp(6)) }
         val toolItems = listOf("Preview" to "VIDEO PREVIEW", "Trim" to "TRIM RANGE", "Canvas" to "CANVAS & AUDIO", "Captions" to "CAPTION OVERLAY & STYLE PREVIEW", "AI" to "GEMINI AI ASSISTANT", "Export" to "EXPORT")
+        val toolButtons = mutableListOf<TextView>()
         toolItems.forEach { item ->
             val tool = TextView(this).apply {
                 text = item.first
@@ -218,11 +219,17 @@ class MainActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER
                 setTextColor(white)
                 setPadding(dp(8), dp(10), dp(8), dp(10))
-                setBackgroundColor(0xFF292633.toInt())
+                setBackgroundColor(if (item.first == "Preview") accent else 0xFF292633.toInt())
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { scrollToEditorSection(item.second) }
+                setOnClickListener {
+                    toolButtons.forEach { button ->
+                        button.setBackgroundColor(if (button === this) accent else 0xFF292633.toInt())
+                    }
+                    showEditorPanel(item.first)
+                }
             }
+            toolButtons.add(tool)
             toolDock.addView(tool, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(3) })
         }
         toolDockScroll.addView(toolDock)
@@ -1224,11 +1231,41 @@ class MainActivity : AppCompatActivity() {
         progress.visibility = View.GONE
     }
 
-    private fun scrollToEditorSection(label: String) {
-        val target = (0 until editorRoot.childCount)
-            .map { editorRoot.getChildAt(it) }
-            .firstOrNull { it is TextView && (it.text?.toString() == label || it.text?.toString()?.startsWith(label) == true) }
-        if (target != null) editorScroll.post { editorScroll.smoothScrollTo(0, (target.top - dp(12)).coerceAtLeast(0)) }
+    private fun showEditorPanel(panelName: String) {
+        val selectedSection = when (panelName) {
+            "Trim" -> "TRIM RANGE"
+            "Canvas" -> "CANVAS & AUDIO"
+            "Captions" -> "CAPTION OVERLAY & STYLE PREVIEW"
+            "AI" -> "GEMINI AI ASSISTANT"
+            "Export" -> "EXPORT"
+            else -> null
+        }
+        var currentSection: String? = null
+        var reachedTools = false
+        var target: View? = null
+        val sectionNames = setOf(
+            "VIDEO PREVIEW", "TIMELINE CLIPS", "TRIM RANGE", "CANVAS & AUDIO",
+            "CAPTION OVERLAY & STYLE PREVIEW", "GEMINI AI ASSISTANT", "EXPORT", "FEATURE STATUS"
+        )
+        for (index in 0 until editorRoot.childCount) {
+            val child = editorRoot.getChildAt(index)
+            val title = if (child is TextView) child.text?.toString() else null
+            if (title in sectionNames) {
+                when (title) {
+                    "VIDEO PREVIEW", "TIMELINE CLIPS" -> currentSection = null
+                    "TRIM RANGE" -> { currentSection = "TRIM RANGE"; reachedTools = true }
+                    "CANVAS & AUDIO" -> currentSection = "CANVAS & AUDIO"
+                    "CAPTION OVERLAY & STYLE PREVIEW" -> currentSection = "CAPTION OVERLAY & STYLE PREVIEW"
+                    "GEMINI AI ASSISTANT" -> currentSection = "GEMINI AI ASSISTANT"
+                    "EXPORT", "FEATURE STATUS" -> currentSection = "EXPORT"
+                }
+                if (title == selectedSection || (panelName == "Preview" && title == "VIDEO PREVIEW")) target = child
+            }
+            child.visibility = if (!reachedTools || selectedSection == currentSection) View.VISIBLE else View.GONE
+        }
+        editorScroll.post {
+            editorScroll.smoothScrollTo(0, if (panelName == "Preview" || target == null) 0 else (target!!.top - dp(12)).coerceAtLeast(0))
+        }
     }
 
     private fun sectionTitle(text: String, color: Int) = TextView(this).apply {
