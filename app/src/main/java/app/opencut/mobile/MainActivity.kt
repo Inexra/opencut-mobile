@@ -37,6 +37,8 @@ import java.util.Locale
 
 @UnstableApi
 class MainActivity : AppCompatActivity() {
+    private data class TimelineClip(val uri: Uri, val name: String)
+    private val timelineClips = mutableListOf<TimelineClip>()
     private var selectedVideo: Uri? = null
     private var player: ExoPlayer? = null
     private var transformer: Transformer? = null
@@ -51,22 +53,31 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pickButton: Button
     private lateinit var playPauseButton: Button
     private lateinit var speedButton: Button
+    private lateinit var timelineContainer: LinearLayout
     private var previewSpeed = 1.0f
 
-    private val pickVideo = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            selectedVideo = uri
-            try {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (_: Exception) {
-                // Some document providers grant only temporary access. The current session can still use it.
+    private val pickVideos = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            uris.forEach { uri ->
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        uri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Exception) {
+                    // Some providers grant temporary access only.
+                }
+                if (timelineClips.none { it.uri == uri }) {
+                    val name = queryDisplayName(uri) ?: "Clip ${timelineClips.size + 1}"
+                    timelineClips.add(TimelineClip(uri, name))
+                }
             }
-            loadVideo(uri)
-            status.text = "Video ready. Enter trim start and end in seconds."
-            exportButton.isEnabled = true
+            if (selectedVideo == null && timelineClips.isNotEmpty()) {
+                selectTimelineClip(0)
+            } else {
+                renderTimeline()
+                status.text = "Added ${uris.size} video(s) to the timeline. Select a clip to preview and trim it."
+            }
         }
     }
 
@@ -106,10 +117,25 @@ class MainActivity : AppCompatActivity() {
         })
 
         pickButton = Button(this).apply {
-            text = "＋  Import video"
-            setOnClickListener { pickVideo.launch(arrayOf("video/*")) }
+            text = "＋  Import videos to timeline"
+            setOnClickListener { pickVideos.launch(arrayOf("video/*")) }
         }
         root.addView(pickButton, matchWrap())
+
+        root.addView(sectionTitle("TIMELINE CLIPS", white))
+        root.addView(TextView(this).apply {
+            text = "Import several videos, select one to preview, then reorder or remove clips. Trim/export currently applies to the selected clip."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(2), 0, dp(8))
+        })
+        timelineContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setBackgroundColor(panel)
+        }
+        root.addView(timelineContainer, matchWrap())
+        renderTimeline()
 
         playerView = PlayerView(this).apply {
             setBackgroundColor(0xFF050507.toInt())
@@ -230,14 +256,15 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(status)
 
-        root.addView(sectionTitle("EDITOR ROADMAP", white))
+        root.addView(sectionTitle("FEATURE STATUS", white))
         val roadmap = listOf(
-            "✓  Import and preview one video",
-            "✓  Trim start/end and export MP4",
-            "○  Multi-clip timeline and drag-to-reorder",
-            "○  Text overlays and subtitle tracks",
-            "○  Optional local AI captions",
-            "○  Optional highlight/Shorts detection"
+            "✓  Import multiple videos into a clip list",
+            "✓  Select, reorder, and remove timeline clips",
+            "✓  Preview speed and playhead-based trim markers",
+            "✓  Trim/export the selected clip as MP4",
+            "○  Combined multi-clip export and visual effects",
+            "○  Burned-in subtitles and AI speech transcription",
+            "○  Automatic highlight/Shorts detection"
         )
         roadmap.forEach { line ->
             root.addView(TextView(this).apply {
@@ -246,6 +273,102 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(if (line.startsWith("✓")) 0xFFB9F4D0.toInt() else muted)
                 setPadding(0, dp(5), 0, dp(5))
             })
+        }
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        return try {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun selectTimelineClip(index: Int) {
+        if (index !in timelineClips.indices) return
+        selectedVideo = timelineClips[index].uri
+        loadVideo(timelineClips[index].uri)
+        startInput.setText("0")
+        endInput.setText("60")
+        exportButton.isEnabled = true
+        status.text = "Selected: ${timelineClips[index].name}. Set trim points or edit the time fields."
+        renderTimeline()
+    }
+
+    private fun renderTimeline() {
+        if (!::timelineContainer.isInitialized) return
+        timelineContainer.removeAllViews()
+        if (timelineClips.isEmpty()) {
+            timelineContainer.addView(TextView(this).apply {
+                text = "No clips yet. Tap Import videos to timeline."
+                setTextColor(0xFFB8B5C8.toInt())
+                setPadding(dp(4), dp(8), dp(4), dp(8))
+            })
+            return
+        }
+        timelineClips.forEachIndexed { index, clip ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(6), dp(6), dp(6), dp(6))
+                if (clip.uri == selectedVideo) setBackgroundColor(0xFF302B48.toInt())
+            }
+            val select = Button(this).apply {
+                text = "${if (clip.uri == selectedVideo) "● " else ""}${index + 1}. ${clip.name}"
+                textSize = 12f
+                setOnClickListener { selectTimelineClip(index) }
+            }
+            row.addView(select, matchWrap())
+            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val up = Button(this).apply {
+                text = "↑"
+                isEnabled = index > 0
+                setOnClickListener {
+                    val item = timelineClips.removeAt(index)
+                    timelineClips.add(index - 1, item)
+                    renderTimeline()
+                }
+            }
+            val down = Button(this).apply {
+                text = "↓"
+                isEnabled = index < timelineClips.lastIndex
+                setOnClickListener {
+                    val item = timelineClips.removeAt(index)
+                    timelineClips.add(index + 1, item)
+                    renderTimeline()
+                }
+            }
+            val remove = Button(this).apply {
+                text = "Remove"
+                setOnClickListener {
+                    val wasSelected = clip.uri == selectedVideo
+                    timelineClips.removeAt(index)
+                    if (wasSelected) {
+                        player?.release()
+                        player = null
+                        playerView.player = null
+                        selectedVideo = null
+                        exportButton.isEnabled = false
+                        if (timelineClips.isNotEmpty()) {
+                            selectTimelineClip(index.coerceAtMost(timelineClips.lastIndex))
+                        } else {
+                            status.text = "Timeline is empty. Import a video to continue."
+                        }
+                    }
+                    renderTimeline()
+                }
+            }
+            actions.addView(up, LinearLayout.LayoutParams(0, dp(44), 1f))
+            actions.addView(down, LinearLayout.LayoutParams(0, dp(44), 1f))
+            actions.addView(remove, LinearLayout.LayoutParams(0, dp(44), 1f))
+            row.addView(actions)
+            timelineContainer.addView(row)
+            if (index < timelineClips.lastIndex) {
+                timelineContainer.addView(View(this).apply {
+                    setBackgroundColor(0xFF393744.toInt())
+                }, LinearLayout.LayoutParams(-1, dp(1)))
+            }
         }
     }
 
@@ -258,6 +381,7 @@ class MainActivity : AppCompatActivity() {
             exo.playWhenReady = false
             exo.setPlaybackSpeed(previewSpeed)
         }
+        renderTimeline()
     }
 
     private fun setTrimFromPlayhead(isStart: Boolean) {
