@@ -4,17 +4,18 @@ A free, open-source native Kotlin video-editor starter for Android 17 / API 36 a
 
 ## Current working features
 - Native Android interface
-- Select a local video using Android's document picker
-- Preview video with AndroidX Media3 ExoPlayer
+- Import multiple local videos using Android's document picker
+- A basic clip-list timeline: select, reorder, and remove clips
+- Preview the selected video with AndroidX Media3 ExoPlayer
 - Play/pause and preview-speed controls (1×, 1.25×, 1.5×, 2×)
 - Set trim start/end from the current preview playhead
 - Set trim start and end times manually in seconds
-- Export a trimmed MP4 using AndroidX Media3 Transformer
+- Export the selected clip as a trimmed MP4 using AndroidX Media3 Transformer
 - Progress and completion/error feedback
 - No account, watermark, ads, cloud service, or paid API required
 
 ## Current limitations
-This is a first buildable MVP, not a complete CapCut replacement yet. It currently edits one video per export. The timeline is a trim-range control rather than a multi-track, drag-and-drop timeline. AI captions and automatic highlight detection are not implemented in this initial build. Those should be added as separate modules after the core app is tested on-device.
+This is an evolving MVP, not a complete CapCut replacement yet. Multiple clips can be collected, selected, reordered, and removed in a basic list, but the app does not yet join all clips into one export or provide a multitrack waveform timeline. Text/subtitle overlays, speech-to-text captions, automatic highlight detection, and AI-assisted Shorts generation are not implemented yet. The current export trims only the selected clip.
 
 ## Build
 Requirements:
