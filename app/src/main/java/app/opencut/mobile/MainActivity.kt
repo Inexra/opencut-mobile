@@ -212,16 +212,16 @@ class MainActivity : AppCompatActivity() {
 
         val toolDockScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; setBackgroundColor(0xFF191820.toInt()) }
         val toolDock = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(6), dp(6), dp(6), dp(6)) }
-        val toolItems = listOf("Preview" to "VIDEO PREVIEW", "Trim" to "TRIM RANGE", "Canvas" to "CANVAS & AUDIO", "Captions" to "CAPTION OVERLAY & STYLE PREVIEW", "AI" to "GEMINI AI ASSISTANT", "Export" to "EXPORT")
+        val toolItems = listOf("▶ Preview" to "VIDEO PREVIEW", "✂ Edit" to "TRIM RANGE", "♫ Audio" to "CANVAS & AUDIO", "T Text" to "CAPTION OVERLAY & STYLE PREVIEW", "✦ AI" to "GEMINI AI ASSISTANT", "⇧ Export" to "EXPORT")
         val toolButtons = mutableListOf<TextView>()
         toolItems.forEach { item ->
             val tool = TextView(this).apply {
                 text = item.first
-                textSize = 12f
+                textSize = 11f
                 gravity = Gravity.CENTER
                 setTextColor(white)
-                setPadding(dp(8), dp(10), dp(8), dp(10))
-                setBackgroundColor(if (item.first == "Preview") accent else 0xFF292633.toInt())
+                setPadding(dp(6), dp(5), dp(6), dp(5))
+                setBackgroundColor(if (item.first == "▶ Preview") accent else 0xFF292633.toInt())
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
@@ -232,7 +232,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             toolButtons.add(tool)
-            toolDock.addView(tool, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(3) })
+            toolDock.addView(tool, LinearLayout.LayoutParams(dp(76), dp(48)).apply { rightMargin = dp(4) })
         }
         toolDockScroll.addView(toolDock)
         screenRoot.addView(toolDockScroll, LinearLayout.LayoutParams(-1, dp(58)))
@@ -1270,11 +1270,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun showEditorPanel(panelName: String) {
         val selectedSection = when (panelName) {
-            "Trim" -> "TRIM RANGE"
-            "Canvas" -> "CANVAS & AUDIO"
-            "Captions" -> "CAPTION OVERLAY & STYLE PREVIEW"
+            "✂ Edit" -> "TRIM RANGE"
+            "♫ Audio" -> "CANVAS & AUDIO"
+            "T Text" -> "CAPTION OVERLAY & STYLE PREVIEW"
             "AI" -> "GEMINI AI ASSISTANT"
-            "Export" -> "EXPORT"
+            "⇧ Export" -> "EXPORT"
             else -> null
         }
         var currentSection: String? = null
@@ -1296,7 +1296,7 @@ class MainActivity : AppCompatActivity() {
                     "GEMINI AI ASSISTANT" -> currentSection = "GEMINI AI ASSISTANT"
                     "EXPORT", "FEATURE STATUS" -> currentSection = "EXPORT"
                 }
-                if (title == selectedSection || (panelName == "Preview" && title == "VIDEO PREVIEW")) target = child
+                if (title == selectedSection || (panelName == "▶ Preview" && title == "VIDEO PREVIEW")) target = child
             }
             child.visibility = if (!reachedTools || selectedSection == currentSection) View.VISIBLE else View.GONE
         }
