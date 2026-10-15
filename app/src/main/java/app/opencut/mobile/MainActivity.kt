@@ -10,6 +10,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.text.TextWatcher
 import android.text.Editable
 import android.widget.LinearLayout
@@ -210,20 +211,7 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(pickButton, matchWrap())
 
-        root.addView(sectionTitle("TIMELINE CLIPS", white))
-        root.addView(TextView(this).apply {
-            text = "Import several videos, select one to preview, then reorder or remove clips. Trim/export currently applies to the selected clip."
-            textSize = 12f
-            setTextColor(muted)
-            setPadding(0, dp(2), 0, dp(8))
-        })
-        timelineContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-            setBackgroundColor(panel)
-        }
-        root.addView(timelineContainer, matchWrap())
-        renderTimeline()
+
 
         playerView = PlayerView(this).apply {
             setBackgroundColor(0xFF050507.toInt())
@@ -256,6 +244,21 @@ class MainActivity : AppCompatActivity() {
         })
         root.addView(sectionTitle("VIDEO PREVIEW", white))
         root.addView(previewFrame)
+
+        root.addView(sectionTitle("TIMELINE CLIPS", white))
+        root.addView(TextView(this).apply {
+            text = "Import several videos, select one to preview, then reorder or remove clips. Trim/export currently applies to the selected clip."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(2), 0, dp(8))
+        })
+        timelineContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setBackgroundColor(panel)
+        }
+        root.addView(timelineContainer, matchWrap())
+        renderTimeline()
 
         val playbackRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
