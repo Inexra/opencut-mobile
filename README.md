@@ -20,7 +20,8 @@ A free, open-source native Kotlin video-editor starter for Android 17 / API 36 a
 - Caption text is burned into the exported MP4 in the selected style
 - Smart editing presets for Shorts, landscape, square, podcast clips, and karaoke
 - Export a basic SRT subtitle file with one caption cue covering the selected trim range
-- Optional Gemini AI assistant: save your own API key encrypted on-device and generate editable YouTube titles, descriptions, and hashtags from a supplied topic/caption
+- Settings menu entry for the user to add, change, or remove their own Gemini API key
+- Optional Gemini AI assistant generates editable YouTube titles, descriptions, and hashtags from a supplied topic/caption
 - Progress and completion/error feedback
 - Local editing works without an account or AI API; optional Gemini metadata generation uses your own API key
 
