@@ -98,6 +98,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var aspectRatioButton: Button
     private lateinit var rotateButton: Button
     private lateinit var motionButton: Button
+    private lateinit var titleAnimationButton: Button
+    private lateinit var trimFineButton: Button
+    private lateinit var highlightButton: Button
     private lateinit var muteButton: Button
     private lateinit var overlayInput: EditText
     private lateinit var stickerInput: EditText
@@ -117,6 +120,7 @@ class MainActivity : AppCompatActivity() {
     private var motionPreset = "Off"
     private var motionScale = 1f
     private var motionRotation = 0f
+    private var titleAnimation = "Fade in"
     private var muteAudio = false
 
     private val createSrtDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/x-subrip")) { uri ->
@@ -426,7 +430,34 @@ class MainActivity : AppCompatActivity() {
         }
         trimRow.addView(startInput, LinearLayout.LayoutParams(0, dp(52), 1f).apply { rightMargin = dp(6) })
         trimRow.addView(endInput, LinearLayout.LayoutParams(0, dp(52), 1f).apply { leftMargin = dp(6) })
-        root.addView(trimRow)
+        trimFineButton = Button(this).apply {
+            text = "Fine trim  ±0.1s"
+            textSize = 11f
+            setOnClickListener {
+                val options = arrayOf("±1.0 second", "±0.1 second", "±0.01 second")
+                android.app.AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Trim adjustment step")
+                    .setItems(options) { _, which ->
+                        val step = when (which) { 0 -> 1.0; 1 -> 0.1; else -> 0.01 }
+                        fun adjust(input: EditText, delta: Double) {
+                            val value = (input.text.toString().toDoubleOrNull() ?: 0.0) + delta
+                            input.setText(String.format(Locale.US, "%.2f", value.coerceAtLeast(0.0)))
+                        }
+                        android.app.AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Adjust which trim point?")
+                            .setItems(arrayOf("Start −", "Start +", "End −", "End +")) { _, action ->
+                                when (action) {
+                                    0 -> adjust(startInput, -step)
+                                    1 -> adjust(startInput, step)
+                                    2 -> adjust(endInput, -step)
+                                    3 -> adjust(endInput, step)
+                                }
+                                status.text = "Trim point adjusted by ${String.format(Locale.US, "%.2f", step)} seconds. Check that end is after start."
+                            }.show()
+                    }.show()
+            }
+        }
+        root.addView(trimFineButton, matchWrap())
 
         root.addView(sectionTitle("CANVAS & AUDIO", white))
         val editOptions = LinearLayout(this).apply {
@@ -513,8 +544,22 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(panel)
         }
         root.addView(stickerInput, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        titleAnimationButton = Button(this).apply {
+            text = "Title animation: Fade in"
+            setOnClickListener {
+                val choices = arrayOf("Fade in", "Pop in", "Slide up", "Static")
+                android.app.AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Title / sticker animation")
+                    .setItems(choices) { _, which ->
+                        titleAnimation = choices[which]
+                        text = "Title animation: $titleAnimation"
+                        status.text = "Selected $titleAnimation. Animation is applied during export to text and emoji overlays."
+                    }.show()
+            }
+        }
+        root.addView(titleAnimationButton, matchWrap())
         root.addView(TextView(this).apply {
-            text = "Add an emoji or short symbol to the exported video. This is a static overlay; animated stickers can be added in a later update."
+            text = "Text and emoji overlays can use a simple export-time entrance animation."
             textSize = 12f
             setTextColor(muted)
             setPadding(0, dp(4), 0, dp(4))
@@ -657,6 +702,8 @@ class MainActivity : AppCompatActivity() {
             "✓  Export aspect ratios: original, 16:9, 9:16, square",
             "✓  Rotate, mute audio, and burn in a static text overlay",
             "✓  Five caption overlay styles with live preview and export",
+            "✓  Fine trim adjustments (1s, 0.1s, 0.01s)",
+            "✓  Animated text and emoji entrance presets",
             "✓  Smart edit presets for Shorts, landscape, square, podcast and karaoke",
             "✓  Export a basic SRT subtitle file for the selected time range",
             "○  AI speech transcription, highlight detection and multi-clip export",
@@ -1251,7 +1298,7 @@ class MainActivity : AppCompatActivity() {
                 setSpan(BackgroundColorSpan(0xCC000000.toInt()), 0, length, 0)
                 setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
             }
-            textOverlays.add(TextOverlay.createStaticTextOverlay(styledText))
+            textOverlays.add(createAnimatedTextOverlay(styledText, titleAnimation))
         }
         val stickerText = stickerInput.text.toString().trim()
         if (stickerText.isNotEmpty()) {
@@ -1259,7 +1306,7 @@ class MainActivity : AppCompatActivity() {
                 setSpan(ForegroundColorSpan(android.graphics.Color.WHITE), 0, length, 0)
                 setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
             }
-            textOverlays.add(TextOverlay.createStaticTextOverlay(styledSticker))
+            textOverlays.add(createAnimatedTextOverlay(styledSticker, titleAnimation))
         }
         val captionText = captionInput.text.toString().trim()
         if (captionText.isNotEmpty()) {
@@ -1311,6 +1358,44 @@ class MainActivity : AppCompatActivity() {
             outFile.delete()
             status.text = "Could not start export: ${e.message}"
             resetExportUi()
+        }
+    }
+
+
+    private fun createAnimatedTextOverlay(
+        original: SpannableString,
+        animation: String
+    ): TextOverlay {
+        return object : TextOverlay() {
+            override fun getText(presentationTimeUs: Long): SpannableString {
+                val seconds = presentationTimeUs / 1_000_000f
+                val progress = (seconds / 0.7f).coerceIn(0f, 1f)
+                val alpha = when (animation) {
+                    "Fade in" -> (progress * 255).toInt()
+                    "Pop in" -> if (seconds < 0.12f) 80 else 255
+                    "Slide up" -> (progress * 255).toInt()
+                    else -> 255
+                }.coerceIn(0, 255)
+                val styled = SpannableString(original)
+                if (styled.isNotEmpty()) {
+                    styled.setSpan(
+                        ForegroundColorSpan(android.graphics.Color.argb(alpha, 255, 255, 255)),
+                        0, styled.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
+                return styled
+            }
+
+            override fun getOverlaySettings(presentationTimeUs: Long): androidx.media3.effect.OverlaySettings {
+                val seconds = presentationTimeUs / 1_000_000f
+                val progress = (seconds / 0.7f).coerceIn(0f, 1f)
+                val settings = androidx.media3.effect.StaticOverlaySettings.Builder()
+                when (animation) {
+                    "Slide up" -> settings.setBackgroundFrameAnchor(0f, (-0.15f * (1f - progress)))
+                    "Pop in" -> settings.setScale(0.75f + 0.25f * progress, 0.75f + 0.25f * progress)
+                }
+                return settings.build()
+            }
         }
     }
 
