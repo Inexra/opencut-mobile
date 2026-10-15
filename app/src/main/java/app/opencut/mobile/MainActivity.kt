@@ -83,6 +83,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var aiTopicInput: EditText
     private lateinit var aiDescriptionInput: EditText
     private lateinit var aiStatus: TextView
+    private lateinit var editorScroll: ScrollView
+    private lateinit var editorRoot: LinearLayout
     private var captionStyle = "Classic"
     private var previewSpeed = 1.0f
     private var outputRatio: String = "Original"
@@ -151,13 +153,14 @@ class MainActivity : AppCompatActivity() {
         val muted = 0xFFB8B5C8.toInt()
         val accent = 0xFF8B78FF.toInt()
 
-        val scroll = ScrollView(this).apply { setBackgroundColor(bg) }
-        val root = LinearLayout(this).apply {
+        editorScroll = ScrollView(this).apply { setBackgroundColor(bg) }
+        editorRoot = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(22), dp(20), dp(32))
+            setPadding(dp(16), dp(16), dp(16), dp(28))
         }
-        scroll.addView(root)
-        setContentView(scroll)
+        editorScroll.addView(editorRoot)
+        setContentView(editorScroll)
+        val root = editorRoot
 
         val appHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -180,6 +183,26 @@ class MainActivity : AppCompatActivity() {
             setTextColor(muted)
             setPadding(0, dp(4), 0, dp(18))
         })
+
+        val toolDockScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val toolDock = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(2), 0, dp(10)) }
+        val toolItems = listOf("Preview" to "VIDEO PREVIEW", "Trim" to "TRIM RANGE", "Canvas" to "CANVAS & AUDIO", "Captions" to "CAPTION OVERLAY & STYLE PREVIEW", "AI" to "GEMINI AI ASSISTANT", "Export" to "EXPORT")
+        toolItems.forEach { item ->
+            val tool = TextView(this).apply {
+                text = item.first
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setTextColor(white)
+                setPadding(dp(16), dp(11), dp(16), dp(11))
+                setBackgroundColor(0xFF292633.toInt())
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { scrollToEditorSection(item.second) }
+            }
+            toolDock.addView(tool, LinearLayout.LayoutParams(-2, dp(44)).apply { rightMargin = dp(8) })
+        }
+        toolDockScroll.addView(toolDock)
+        root.addView(toolDockScroll)
 
         pickButton = Button(this).apply {
             text = "＋  Import videos to timeline"
@@ -231,6 +254,7 @@ class MainActivity : AppCompatActivity() {
             rightMargin = dp(12)
             bottomMargin = dp(16)
         })
+        root.addView(sectionTitle("VIDEO PREVIEW", white))
         root.addView(previewFrame)
 
         val playbackRow = LinearLayout(this).apply {
@@ -480,6 +504,7 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(aiStatus)
 
+        root.addView(sectionTitle("EXPORT", white))
         exportButton = Button(this).apply {
             text = "Export trimmed MP4"
             isEnabled = false
@@ -1115,6 +1140,13 @@ class MainActivity : AppCompatActivity() {
         exportButton.isEnabled = selectedVideo != null
         pickButton.isEnabled = true
         progress.visibility = View.GONE
+    }
+
+    private fun scrollToEditorSection(label: String) {
+        val target = (0 until editorRoot.childCount)
+            .map { editorRoot.getChildAt(it) }
+            .firstOrNull { it is TextView && (it.text?.toString() == label || it.text?.toString()?.startsWith(label) == true) }
+        if (target != null) editorScroll.post { editorScroll.smoothScrollTo(0, (target.top - dp(12)).coerceAtLeast(0)) }
     }
 
     private fun sectionTitle(text: String, color: Int) = TextView(this).apply {
