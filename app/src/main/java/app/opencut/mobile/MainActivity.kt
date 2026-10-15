@@ -83,7 +83,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var aiTopicInput: EditText
     private lateinit var aiDescriptionInput: EditText
     private lateinit var aiStatus: TextView
-    private lateinit var geminiKeyButton: Button
     private var captionStyle = "Classic"
     private var previewSpeed = 1.0f
     private var outputRatio: String = "Original"
@@ -160,12 +159,21 @@ class MainActivity : AppCompatActivity() {
         scroll.addView(root)
         setContentView(scroll)
 
-        root.addView(TextView(this).apply {
+        val appHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        appHeader.addView(TextView(this).apply {
             text = "OpenCut Mobile"
-            textSize = 27f
+            textSize = 25f
             setTextColor(white)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-        })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        appHeader.addView(Button(this).apply {
+            text = "⚙ Settings"
+            setOnClickListener { showSettingsMenu() }
+        }, LinearLayout.LayoutParams(-2, dp(48)))
+        root.addView(appHeader)
         root.addView(TextView(this).apply {
             text = "Native video editing • local-first • open source"
             textSize = 13f
@@ -435,16 +443,11 @@ class MainActivity : AppCompatActivity() {
 
         root.addView(sectionTitle("GEMINI AI ASSISTANT", white))
         root.addView(TextView(this).apply {
-            text = "Use your own Gemini API key for AI-generated YouTube titles, descriptions and hashtags. Your key is stored encrypted on this device and is not included in the public repository."
+            text = "Generate editable YouTube titles, descriptions and hashtags from the topic or caption text you provide. Configure your personal API key in Settings."
             textSize = 12f
             setTextColor(muted)
             setPadding(0, dp(2), 0, dp(8))
         })
-        geminiKeyButton = Button(this).apply {
-            text = if (getGeminiApiKey().isNullOrBlank()) "Set Gemini API key" else "Gemini API key: Saved (tap to change)"
-            setOnClickListener { showGeminiKeyDialog() }
-        }
-        root.addView(geminiKeyButton, matchWrap())
         aiTopicInput = EditText(this).apply {
             hint = "Video topic or short summary"
             setHintTextColor(muted)
@@ -540,6 +543,25 @@ class MainActivity : AppCompatActivity() {
         return try { secureAiPreferences().getString("gemini_api_key", null) } catch (_: Exception) { null }
     }
 
+    private fun showSettingsMenu() {
+        val keyStatus = if (getGeminiApiKey().isNullOrBlank()) "Not configured" else "Configured"
+        val items = arrayOf("Gemini API key — $keyStatus", "About OpenCut Mobile")
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Settings")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> showGeminiKeyDialog()
+                    1 -> android.app.AlertDialog.Builder(this)
+                        .setTitle("About OpenCut Mobile")
+                        .setMessage("Open-source video editor. Gemini AI metadata generation is optional and uses the API key you configure on this device. Automatic YouTube posting is not included.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
     private fun showGeminiKeyDialog() {
         val input = EditText(this).apply {
             hint = "Paste your Gemini API key"
@@ -555,12 +577,10 @@ class MainActivity : AppCompatActivity() {
                 val key = input.text.toString().trim()
                 if (key.isBlank()) {
                     secureAiPreferences().edit().remove("gemini_api_key").apply()
-                    geminiKeyButton.text = "Set Gemini API key"
                     aiStatus.text = "Gemini API key removed."
                 } else {
                     try {
                         secureAiPreferences().edit().putString("gemini_api_key", key).apply()
-                        geminiKeyButton.text = "Gemini API key: Saved (tap to change)"
                         aiStatus.text = "API key saved encrypted on this device."
                     } catch (e: Exception) {
                         aiStatus.text = "Could not securely save key: ${e.message}"
@@ -569,7 +589,6 @@ class MainActivity : AppCompatActivity() {
             }
             .setNeutralButton("Remove key") { _, _ ->
                 try { secureAiPreferences().edit().remove("gemini_api_key").apply() } catch (_: Exception) {}
-                geminiKeyButton.text = "Set Gemini API key"
                 aiStatus.text = "Gemini API key removed."
             }
             .setNegativeButton("Cancel", null)
