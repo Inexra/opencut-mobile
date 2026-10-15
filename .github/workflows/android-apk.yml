@@ -1,26 +1,17 @@
 ```yaml
-name: Build OpenCut Mobile APK
+name: OpenCut Mobile APK Build
 
-'on':
-  push:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
-
-permissions:
-  contents: read
+on: [push, workflow_dispatch]
 
 jobs:
   build:
-    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out source code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Install Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -34,25 +25,20 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
-        run: |
-          sdkmanager --install "platform-tools"
-          sdkmanager --install "platforms;android-36"
-          sdkmanager --install "build-tools;36.0.0"
+      - name: Install Android packages
+        run: sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Accept Android SDK licenses
-        run: |
-          yes | sdkmanager --licenses || true
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
 
-      - name: Verify project files
+      - name: Check project files
         run: |
-          echo "Checking required Android project files..."
           test -f settings.gradle.kts
           test -f build.gradle.kts
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
 
-      - name: Build debug APK
+      - name: Build APK
         run: gradle --no-daemon assembleDebug
 
       - name: Upload APK
