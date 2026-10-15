@@ -31,17 +31,17 @@ jobs:
           gradle-version: '8.13'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager --install "platform-tools"
           sdkmanager --install "platforms;android-36"
           sdkmanager --install "build-tools;36.0.0"
 
       - name: Accept Android SDK licenses
-        run: |
-          yes | sdkmanager --licenses || true
+        run: yes | sdkmanager --licenses || true
 
       - name: Check Android project files
         run: |
