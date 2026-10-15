@@ -526,6 +526,73 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+        polishUi(root, accent, panel, white)
+    }
+
+    private fun polishUi(root: LinearLayout, accent: Int, panel: Int, white: Int) {
+        fun rounded(color: Int, radiusDp: Int): android.graphics.drawable.Drawable {
+            val shape = android.graphics.drawable.GradientDrawable().apply {
+                setColor(color)
+                cornerRadius = dp(radiusDp).toFloat()
+            }
+            return android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x338B78FF.toInt()), shape, null
+            )
+        }
+        fun visit(view: View) {
+            when (view) {
+                is Button -> {
+                    val primary = view == pickButton || view == exportButton
+                    view.background = rounded(if (primary) accent else 0xFF292735.toInt(), 14)
+                    view.setTextColor(white)
+                    view.textSize = view.textSize.coerceAtMost(15f)
+                    view.isAllCaps = false
+                    view.stateListAnimator = null
+                    view.setPadding(dp(14), dp(8), dp(14), dp(8))
+                    view.setOnTouchListener { v, event ->
+                        when (event.actionMasked) {
+                            android.view.MotionEvent.ACTION_DOWN ->
+                                v.animate().scaleX(0.975f).scaleY(0.975f).setDuration(90).start()
+                            android.view.MotionEvent.ACTION_UP,
+                            android.view.MotionEvent.ACTION_CANCEL ->
+                                v.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
+                        }
+                        false
+                    }
+                }
+                is EditText -> {
+                    view.background = rounded(panel, 12)
+                    view.setPadding(dp(14), dp(12), dp(14), dp(12))
+                    view.textSize = 15f
+                }
+                is LinearLayout -> {
+                    if (view == timelineContainer) {
+                        view.background = rounded(panel, 16)
+                        view.setPadding(dp(10), dp(8), dp(10), dp(8))
+                    }
+                    for (i in 0 until view.childCount) visit(view.getChildAt(i))
+                }
+                is FrameLayout -> {
+                    view.background = rounded(0xFF08080D.toInt(), 18)
+                    view.clipToOutline = true
+                    for (i in 0 until view.childCount) visit(view.getChildAt(i))
+                }
+            }
+        }
+        visit(root)
+        // A short staggered entrance animation, intentionally lightweight for older phones.
+        for (i in 0 until root.childCount) {
+            val child = root.getChildAt(i)
+            child.alpha = 0f
+            child.translationY = dp(8).toFloat()
+            child.animate().alpha(1f).translationY(0f)
+                .setStartDelay(i.coerceAtMost(10) * 22L)
+                .setDuration(220)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+        }
+    }
+
     private fun secureAiPreferences(): android.content.SharedPreferences {
         val masterKey = MasterKey.Builder(this)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
