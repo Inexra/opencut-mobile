@@ -1,0 +1,18 @@
+```yaml
+name: OpenCut Mobile APK Build
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Confirm workflow works
+        run: |
+          echo "GitHub Actions workflow is running."
+          echo "Current branch: $GITHUB_REF_NAME"
+          ls -la
+```
