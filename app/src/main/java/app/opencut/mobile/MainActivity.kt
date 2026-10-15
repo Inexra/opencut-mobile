@@ -163,6 +163,7 @@ class MainActivity : AppCompatActivity() {
 
         playerView = PlayerView(this).apply {
             setBackgroundColor(0xFF050507.toInt())
+            setSurfaceType(PlayerView.SURFACE_TYPE_TEXTURE_VIEW)
             useController = true
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(220)
