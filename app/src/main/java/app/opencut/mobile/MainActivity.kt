@@ -1460,7 +1460,9 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
             textOverlays.add(createAnimatedTextOverlay(styledSticker, titleAnimation))
         }
         val captionText = captionInput.text.toString().trim()
-        if (captionText.isNotEmpty()) {
+        if (generatedCaptionCues.isNotEmpty()) {
+            textOverlays.add(createTimedCaptionOverlay(generatedCaptionCues.toList()))
+        } else if (captionText.isNotEmpty()) {
             val styledCaption = buildCaptionSpannable(captionText)
             textOverlays.add(TextOverlay.createStaticTextOverlay(styledCaption))
         }
@@ -1596,6 +1598,18 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
                     .show()
             }
         }.start()
+    }
+
+
+    private fun createTimedCaptionOverlay(cues: List<CaptionCue>): TextOverlay {
+        return object : TextOverlay() {
+            override fun getText(presentationTimeUs: Long): SpannableString {
+                val seconds = presentationTimeUs / 1_000_000.0
+                val cue = cues.firstOrNull { seconds >= it.start && seconds < it.end }
+                if (cue == null) return SpannableString("")
+                return buildCaptionSpannable(cue.text)
+            }
+        }
     }
 
     private fun createAnimatedTextOverlay(
