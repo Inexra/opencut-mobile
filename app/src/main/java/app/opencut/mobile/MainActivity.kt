@@ -977,9 +977,12 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
                 mimeType = fileObject.optString("mimeType", mimeType)
                 if (fileUri.isNullOrBlank()) throw IllegalStateException("Gemini upload returned no file URI.")
                 val prompt = """Transcribe all spoken dialogue in this video into subtitle cues. Return ONLY valid JSON array, no markdown. Each item must have numeric start and end times in seconds and a concise verbatim text field, schema: [{"start":0.0,"end":2.4,"text":"spoken words"}]. Use accurate timestamps, preserve language as spoken, split captions into readable phrases of at most about 8 words, omit music and sound effects, and do not invent speech."""
-                val requestBody = JSONObject().put("contents", org.json.JSONArray().put(JSONObject().put("parts", org.json.JSONArray()
+                val requestParts = org.json.JSONArray()
                     .put(JSONObject().put("text", prompt))
-                    .put(JSONObject().put("file_data", JSONObject().put("mime_type", mimeType).put("file_uri", fileUri)))))
+                    .put(JSONObject().put("file_data", JSONObject().put("mime_type", mimeType).put("file_uri", fileUri)))
+                val requestContents = org.json.JSONArray().put(JSONObject().put("parts", requestParts))
+                val requestBody = JSONObject()
+                    .put("contents", requestContents)
                     .put("generationConfig", JSONObject().put("responseMimeType", "application/json"))
                     .toString()
                 var responseText: String? = null
@@ -1624,10 +1627,13 @@ private data class CaptionCue(val start: Double, val end: Double, val text: Stri
                 val fileUri = file.optString("uri")
                 if (fileUri.isBlank()) throw IllegalStateException("Gemini returned no video URI.")
                 val prompt = """Analyze this video and identify the 5 most engaging highlight moments suitable for short clips. Return ONLY a JSON array with objects containing start and end timestamps in seconds and a short reason, e.g. [{"start":12.0,"end":42.0,"reason":"Strong action and payoff"}]. Prefer complete moments with a clear hook/payoff, avoid intros, recaps, credits and silent gaps. Keep each segment 15–60 seconds and do not invent events."""
-                val body = JSONObject().put("contents", org.json.JSONArray().put(JSONObject().put("parts", org.json.JSONArray()
+                val highlightParts = org.json.JSONArray()
                     .put(JSONObject().put("text", prompt))
-                    .put(JSONObject().put("file_data", JSONObject().put("mime_type", mime).put("file_uri", fileUri)))))
-                    .put("generationConfig", JSONObject().put("responseMimeType", "application/json")).toString()
+                    .put(JSONObject().put("file_data", JSONObject().put("mime_type", mime).put("file_uri", fileUri)))
+                val body = JSONObject()
+                    .put("contents", org.json.JSONArray().put(JSONObject().put("parts", highlightParts)))
+                    .put("generationConfig", JSONObject().put("responseMimeType", "application/json"))
+                    .toString()
                 val connection = (URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + java.net.URLEncoder.encode(apiKey, "UTF-8")).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"; connectTimeout = 30000; readTimeout = 120000; doOutput = true
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")
