@@ -154,7 +154,7 @@ class MainActivity : AppCompatActivity() {
         val scroll = ScrollView(this).apply { setBackgroundColor(bg) }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(24))
+            setPadding(dp(20), dp(22), dp(20), dp(32))
         }
         scroll.addView(root)
         setContentView(scroll)
@@ -524,6 +524,17 @@ class MainActivity : AppCompatActivity() {
                 setPadding(0, dp(5), 0, dp(5))
             })
         }
+        // Give each major block its own breathing room instead of stacking controls tightly.
+        for (i in 0 until root.childCount) {
+            val child = root.getChildAt(i)
+            val lp = child.layoutParams as? LinearLayout.LayoutParams ?: continue
+            lp.bottomMargin = dp(12)
+            if (child is TextView && child.text.toString() == child.text.toString().uppercase(Locale.ROOT)
+                && child.text.toString().length in 4..40) {
+                lp.topMargin = dp(10)
+            }
+            child.layoutParams = lp
+        }
         polishUi(root, accent, panel, white)
     }
 
@@ -543,7 +554,8 @@ class MainActivity : AppCompatActivity() {
                     val primary = view == pickButton || view == exportButton
                     view.background = rounded(if (primary) accent else 0xFF292735.toInt(), 14)
                     view.setTextColor(white)
-                    view.textSize = view.textSize.coerceAtMost(15f)
+                    view.textSize = view.textSize.coerceIn(13f, 15f)
+                    view.minHeight = dp(50)
                     view.isAllCaps = false
                     view.stateListAnimator = null
                     view.setPadding(dp(14), dp(8), dp(14), dp(8))
@@ -562,6 +574,7 @@ class MainActivity : AppCompatActivity() {
                     view.background = rounded(panel, 12)
                     view.setPadding(dp(14), dp(12), dp(14), dp(12))
                     view.textSize = 15f
+                    view.minHeight = dp(52)
                 }
                 is LinearLayout -> {
                     if (view == timelineContainer) {
@@ -1106,11 +1119,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun sectionTitle(text: String, color: Int) = TextView(this).apply {
         this.text = text
-        textSize = 12f
-        letterSpacing = 0.12f
+        textSize = 14f
+        letterSpacing = 0.08f
         setTextColor(color)
         typeface = android.graphics.Typeface.DEFAULT_BOLD
-        setPadding(0, dp(10), 0, dp(4))
+        setPadding(0, dp(18), 0, dp(8))
     }
 
     private fun matchWrap() = LinearLayout.LayoutParams(-1, -2)
