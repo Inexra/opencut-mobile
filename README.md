@@ -15,11 +15,14 @@ A free, open-source native Kotlin video-editor starter for Android 17 / API 36 a
 - Rotate exported video in 90-degree increments
 - Mute the source audio on export
 - Burn a static text overlay into the exported video
+- Five caption styles: Classic, Bold Yellow, Boxed, Minimal, and Karaoke
+- Live caption-style preview over the video before export
+- Caption text is burned into the exported MP4 in the selected style
 - Progress and completion/error feedback
 - No account, watermark, ads, cloud service, or paid API required
 
 ## Current limitations
-This is an evolving MVP, not a complete CapCut replacement yet. Multiple clips can be collected, selected, reordered, and removed in a basic list, but the app does not yet join all clips into one export or provide a multitrack waveform timeline. Timed subtitle tracks, speech-to-text AI captions, automatic highlight detection, AI-assisted Shorts generation, transitions, filters, voiceover tools, and combined multi-clip export are not implemented yet. The current export trims and applies canvas/audio/text settings to the selected clip only.
+This is an evolving MVP, not a complete CapCut replacement yet. Multiple clips can be collected, selected, reordered, and removed in a basic list, but the app does not yet join all clips into one export or provide a multitrack waveform timeline. The caption feature currently styles and burns in text that you type; it does not yet transcribe speech or synchronize multiple caption lines to timestamps. Speech-to-text AI captions, automatic highlight detection, AI-assisted Shorts generation, transitions, filters, voiceover tools, and combined multi-clip export are not implemented yet. The current export trims and applies canvas/audio/text settings to the selected clip only.
 
 ## Build
 Requirements:
