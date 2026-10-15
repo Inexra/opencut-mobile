@@ -34,4 +34,5 @@ dependencies {
     implementation("androidx.media3:media3-transformer:$media3")
     implementation("androidx.media3:media3-effect:$media3")
     implementation("androidx.media3:media3-common:$media3")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 }
