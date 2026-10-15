@@ -154,13 +154,15 @@ class MainActivity : AppCompatActivity() {
         val muted = 0xFFB8B5C8.toInt()
         val accent = 0xFF8B78FF.toInt()
 
-        editorScroll = ScrollView(this).apply { setBackgroundColor(bg) }
+        val screenRoot = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg) }
+        editorScroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
         editorRoot = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(28))
         }
         editorScroll.addView(editorRoot)
-        setContentView(editorScroll)
+        screenRoot.addView(editorScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        setContentView(screenRoot)
         val root = editorRoot
 
         val appHeader = LinearLayout(this).apply {
@@ -185,25 +187,25 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(4), 0, dp(18))
         })
 
-        val toolDockScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val toolDock = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(2), 0, dp(10)) }
+        val toolDockScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; setBackgroundColor(0xFF191820.toInt()) }
+        val toolDock = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(6), dp(6), dp(6), dp(6)) }
         val toolItems = listOf("Preview" to "VIDEO PREVIEW", "Trim" to "TRIM RANGE", "Canvas" to "CANVAS & AUDIO", "Captions" to "CAPTION OVERLAY & STYLE PREVIEW", "AI" to "GEMINI AI ASSISTANT", "Export" to "EXPORT")
         toolItems.forEach { item ->
             val tool = TextView(this).apply {
                 text = item.first
-                textSize = 13f
+                textSize = 12f
                 gravity = Gravity.CENTER
                 setTextColor(white)
-                setPadding(dp(16), dp(11), dp(16), dp(11))
+                setPadding(dp(8), dp(10), dp(8), dp(10))
                 setBackgroundColor(0xFF292633.toInt())
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { scrollToEditorSection(item.second) }
             }
-            toolDock.addView(tool, LinearLayout.LayoutParams(-2, dp(44)).apply { rightMargin = dp(8) })
+            toolDock.addView(tool, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(3) })
         }
         toolDockScroll.addView(toolDock)
-        root.addView(toolDockScroll)
+        screenRoot.addView(toolDockScroll, LinearLayout.LayoutParams(-1, dp(58)))
 
         pickButton = Button(this).apply {
             text = "＋  Import videos to timeline"
@@ -252,12 +254,14 @@ class MainActivity : AppCompatActivity() {
             setTextColor(muted)
             setPadding(0, dp(2), 0, dp(8))
         })
+        val timelineScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; setBackgroundColor(panel) }
         timelineContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
             setPadding(dp(8), dp(4), dp(8), dp(4))
             setBackgroundColor(panel)
         }
-        root.addView(timelineContainer, matchWrap())
+        timelineScroll.addView(timelineContainer)
+        root.addView(timelineScroll, LinearLayout.LayoutParams(-1, dp(150)))
         renderTimeline()
 
         val playbackRow = LinearLayout(this).apply {
@@ -902,17 +906,18 @@ class MainActivity : AppCompatActivity() {
         timelineContainer.removeAllViews()
         if (timelineClips.isEmpty()) {
             timelineContainer.addView(TextView(this).apply {
-                text = "No clips yet. Tap Import videos to timeline."
+                text = "＋ Import clips to start editing"
+                gravity = Gravity.CENTER
                 setTextColor(0xFFB8B5C8.toInt())
-                setPadding(dp(4), dp(8), dp(4), dp(8))
-            })
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+            }, LinearLayout.LayoutParams(dp(220), dp(120)))
             return
         }
         timelineClips.forEachIndexed { index, clip ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(6), dp(6), dp(6), dp(6))
-                if (clip.uri == selectedVideo) setBackgroundColor(0xFF302B48.toInt())
+                setBackgroundColor(if (clip.uri == selectedVideo) 0xFF383052.toInt() else 0xFF24232D.toInt())
             }
             val select = Button(this).apply {
                 text = "${if (clip.uri == selectedVideo) "● " else ""}${index + 1}. ${clip.name}"
@@ -963,12 +968,7 @@ class MainActivity : AppCompatActivity() {
             actions.addView(down, LinearLayout.LayoutParams(0, dp(44), 1f))
             actions.addView(remove, LinearLayout.LayoutParams(0, dp(44), 1f))
             row.addView(actions)
-            timelineContainer.addView(row)
-            if (index < timelineClips.lastIndex) {
-                timelineContainer.addView(View(this).apply {
-                    setBackgroundColor(0xFF393744.toInt())
-                }, LinearLayout.LayoutParams(-1, dp(1)))
-            }
+            timelineContainer.addView(row, LinearLayout.LayoutParams(dp(190), dp(128)).apply { rightMargin = dp(8) })
         }
     }
 
