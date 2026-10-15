@@ -100,6 +100,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var motionButton: Button
     private lateinit var muteButton: Button
     private lateinit var overlayInput: EditText
+    private lateinit var stickerInput: EditText
     private lateinit var captionInput: EditText
     private lateinit var captionPreview: TextView
     private lateinit var captionStyleButton: Button
@@ -502,6 +503,22 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(panel)
         }
         root.addView(overlayInput, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+
+        stickerInput = EditText(this).apply {
+            hint = "Sticker / emoji overlay (e.g. 🔥 😂 ⭐)"
+            setHintTextColor(muted)
+            setTextColor(white)
+            setSingleLine(true)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundColor(panel)
+        }
+        root.addView(stickerInput, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        root.addView(TextView(this).apply {
+            text = "Add an emoji or short symbol to the exported video. This is a static overlay; animated stickers can be added in a later update."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(4), 0, dp(4))
+        })
 
         root.addView(sectionTitle("CAPTION OVERLAY & STYLE PREVIEW", white))
         captionInput = EditText(this).apply {
@@ -1235,6 +1252,14 @@ class MainActivity : AppCompatActivity() {
                 setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
             }
             textOverlays.add(TextOverlay.createStaticTextOverlay(styledText))
+        }
+        val stickerText = stickerInput.text.toString().trim()
+        if (stickerText.isNotEmpty()) {
+            val styledSticker = SpannableString(stickerText).apply {
+                setSpan(ForegroundColorSpan(android.graphics.Color.WHITE), 0, length, 0)
+                setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
+            }
+            textOverlays.add(TextOverlay.createStaticTextOverlay(styledSticker))
         }
         val captionText = captionInput.text.toString().trim()
         if (captionText.isNotEmpty()) {
