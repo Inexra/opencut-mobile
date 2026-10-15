@@ -97,6 +97,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playheadTime: TextView
     private lateinit var aspectRatioButton: Button
     private lateinit var rotateButton: Button
+    private lateinit var motionButton: Button
     private lateinit var muteButton: Button
     private lateinit var overlayInput: EditText
     private lateinit var captionInput: EditText
@@ -112,6 +113,9 @@ class MainActivity : AppCompatActivity() {
     private var previewSpeed = 1.0f
     private var outputRatio: String = "Original"
     private var rotationDegrees = 0f
+    private var motionPreset = "Off"
+    private var motionScale = 1f
+    private var motionRotation = 0f
     private var muteAudio = false
 
     private val createSrtDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/x-subrip")) { uri ->
@@ -453,8 +457,30 @@ class MainActivity : AppCompatActivity() {
                 text = "Rotate ${rotationDegrees.toInt()}°"
             }
         }
-        editOptions.addView(aspectRatioButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(4) })
-        editOptions.addView(rotateButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(4) })
+        motionButton = Button(this).apply {
+            text = "Motion: Off"
+            textSize = 11f
+            setOnClickListener {
+                val choices = arrayOf("Off", "Zoom crop", "Cinematic crop", "Tilt")
+                android.app.AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Export motion look")
+                    .setMessage("Applies a subtle framing transform to the exported video. These are static framing looks, not animated keyframes.")
+                    .setItems(choices) { _, which ->
+                        motionPreset = choices[which]
+                        when (motionPreset) {
+                            "Zoom crop" -> { motionScale = 1.08f; motionRotation = 0f }
+                            "Cinematic crop" -> { motionScale = 1.04f; motionRotation = 0f }
+                            "Tilt" -> { motionScale = 1.04f; motionRotation = 1.5f }
+                            else -> { motionScale = 1f; motionRotation = 0f }
+                        }
+                        text = "Motion: " + motionPreset
+                        status.text = "Applied " + motionPreset + " framing look. It will be used in the next export."
+                    }.show()
+            }
+        }
+        editOptions.addView(aspectRatioButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(3) })
+        editOptions.addView(rotateButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
+        editOptions.addView(motionButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(3) })
         root.addView(editOptions)
 
         muteButton = Button(this).apply {
@@ -1192,8 +1218,13 @@ class MainActivity : AppCompatActivity() {
                 Presentation.createForAspectRatio(1f, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP)
             )
         }
-        if (rotationDegrees != 0f) {
-            videoEffects.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(rotationDegrees).build())
+        if (rotationDegrees != 0f || motionScale != 1f || motionRotation != 0f) {
+            videoEffects.add(
+                ScaleAndRotateTransformation.Builder()
+                    .setScale(motionScale, motionScale)
+                    .setRotationDegrees(rotationDegrees + motionRotation)
+                    .build()
+            )
         }
         val textOverlays = mutableListOf<androidx.media3.effect.TextureOverlay>()
         val overlayText = overlayInput.text.toString().trim()
