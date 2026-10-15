@@ -662,6 +662,11 @@ class MainActivity : AppCompatActivity() {
             text = "Generate with Gemini AI"
             setOnClickListener { generateGeminiDescription() }
         }, matchWrap())
+        highlightButton = Button(this).apply {
+            text = "Find visual highlight moments"
+            setOnClickListener { scanVisualHighlights() }
+        }
+        root.addView(highlightButton, matchWrap())
         aiStatus = TextView(this).apply {
             text = "AI generation uses your Gemini API quota and requires internet access."
             textSize = 12f
@@ -1361,6 +1366,80 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+
+    private fun scanVisualHighlights() {
+        val uri = selectedVideo
+        if (uri == null) {
+            status.text = "Import and select a video first."
+            return
+        }
+        highlightButton.isEnabled = false
+        status.text = "Scanning frames for scene changes… This runs locally on your phone."
+        Thread {
+            val candidates = mutableListOf<Long>()
+            var previous: android.graphics.Bitmap? = null
+            var retriever: MediaMetadataRetriever? = null
+            try {
+                retriever = MediaMetadataRetriever()
+                retriever.setDataSource(this, uri)
+                val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull() ?: 0L
+                var timeMs = 1000L
+                while (timeMs < durationMs && timeMs <= 30L * 60L * 1000L) {
+                    val frame = retriever.getFrameAtTime(timeMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    if (frame != null) {
+                        val small = android.graphics.Bitmap.createScaledBitmap(frame, 24, 24, true)
+                        if (small !== frame) frame.recycle()
+                        val old = previous
+                        if (old != null) {
+                            var diff = 0L
+                            for (y in 0 until 24) {
+                                for (x in 0 until 24) {
+                                    val a = old.getPixel(x, y)
+                                    val b = small.getPixel(x, y)
+                                    diff += kotlin.math.abs(android.graphics.Color.red(a) - android.graphics.Color.red(b))
+                                    diff += kotlin.math.abs(android.graphics.Color.green(a) - android.graphics.Color.green(b))
+                                    diff += kotlin.math.abs(android.graphics.Color.blue(a) - android.graphics.Color.blue(b))
+                                }
+                            }
+                            val averageDifference = diff.toDouble() / (24.0 * 24.0 * 3.0)
+                            if (averageDifference >= 42.0) candidates.add(timeMs)
+                        }
+                        previous?.recycle()
+                        previous = small
+                    }
+                    timeMs += 2000L
+                }
+            } catch (e: Exception) {
+                runOnUiThread { status.text = "Scene scan failed: ${e.message ?: "Could not read video frames"}" }
+            } finally {
+                previous?.recycle()
+                try { retriever?.release() } catch (_: Exception) {}
+            }
+            runOnUiThread {
+                highlightButton.isEnabled = true
+                if (candidates.isEmpty()) {
+                    status.text = "No strong scene changes found. Try a video with more visual cuts."
+                    return@runOnUiThread
+                }
+                val labels = candidates.take(30).map { ms ->
+                    String.format(Locale.US, "%02d:%02d  — scene change candidate", ms / 60000, (ms / 1000) % 60)
+                }.toTypedArray()
+                status.text = "Found ${candidates.size} possible scene changes. These are visual candidates, not AI-verified highlights."
+                android.app.AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Visual highlight candidates")
+                    .setMessage("Tap a time to seek there. This local scan detects frame changes; it does not understand dialogue or story context.")
+                    .setItems(labels) { _, which ->
+                        val chosenMs = candidates[which.coerceAtMost(candidates.lastIndex)]
+                        player?.seekTo(chosenMs)
+                        playheadTime.text = "${formatClock(chosenMs)} / ${formatClock(player?.duration ?: 0L)}"
+                    }
+                    .setPositiveButton("Done", null)
+                    .show()
+            }
+        }.start()
+    }
 
     private fun createAnimatedTextOverlay(
         original: SpannableString,
