@@ -64,6 +64,7 @@ import java.net.URL
 @UnstableApi
 class MainActivity : AppCompatActivity() {
     private data class TimelineClip(val uri: Uri, val name: String)
+private data class CaptionCue(val start: Double, val end: Double, val text: String)
     private val timelineClips = mutableListOf<TimelineClip>()
     private var selectedVideo: Uri? = null
     private var player: ExoPlayer? = null
@@ -123,25 +124,32 @@ class MainActivity : AppCompatActivity() {
     private var motionScale = 1f
     private var motionRotation = 0f
     private var titleAnimation = "Fade in"
+    private val generatedCaptionCues = mutableListOf<CaptionCue>()
     private var muteAudio = false
 
     private val createSrtDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/x-subrip")) { uri ->
         if (uri != null) {
             try {
                 val caption = captionInput.text.toString().trim()
-                if (caption.isEmpty()) {
-                    status.text = "Type a caption before exporting subtitles."
-                    return@registerForActivityResult
+                val srt = if (generatedCaptionCues.isNotEmpty()) {
+                    generatedCaptionCues.mapIndexed { index, cue ->
+                        "${index + 1}\\n${toSrtTime(cue.start)} --> ${toSrtTime(cue.end)}\\n${cue.text.replace("-->", "→")}\\n"
+                    }.joinToString("\\n")
+                } else {
+                    if (caption.isEmpty()) {
+                        status.text = "Generate timed captions or type a caption before exporting subtitles."
+                        return@registerForActivityResult
+                    }
+                    val start = startInput.text.toString().toDoubleOrNull() ?: 0.0
+                    val end = endInput.text.toString().toDoubleOrNull() ?: 0.0
+                    if (end <= start) {
+                        status.text = "Set a valid trim range before exporting SRT."
+                        return@registerForActivityResult
+                    }
+                    "1\\n${toSrtTime(start)} --> ${toSrtTime(end)}\\n${caption.replace("-->", "→")}\\n"
                 }
-                val start = startInput.text.toString().toDoubleOrNull() ?: 0.0
-                val end = endInput.text.toString().toDoubleOrNull() ?: 0.0
-                if (end <= start) {
-                    status.text = "Set a valid trim range before exporting SRT."
-                    return@registerForActivityResult
-                }
-                val srt = "1\\n${toSrtTime(start)} --> ${toSrtTime(end)}\\n${caption.replace("-->", "→")}\\n"
                 contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { it.write(srt) }
-                status.text = "Subtitle file exported. It contains one caption cue for the selected time range."
+                status.text = if (generatedCaptionCues.isNotEmpty()) "Exported ${generatedCaptionCues.size} timed subtitle cues." else "Subtitle file exported."
             } catch (e: Exception) {
                 status.text = "Could not save SRT: ${e.message}"
             }
@@ -664,6 +672,10 @@ class MainActivity : AppCompatActivity() {
             text = "Generate with Gemini AI"
             setOnClickListener { generateGeminiDescription() }
         }, matchWrap())
+        root.addView(Button(this).apply {
+            text = "Transcribe video with Gemini"
+            setOnClickListener { generateTimedCaptionsWithGemini() }
+        }, matchWrap())
         highlightButton = Button(this).apply {
             text = "Find visual highlight moments"
             setOnClickListener { scanVisualHighlights() }
@@ -871,6 +883,138 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+
+    private fun generateTimedCaptionsWithGemini() {
+        val apiKey = getGeminiApiKey()
+        if (apiKey.isNullOrBlank()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Gemini API key required")
+                .setMessage("Add your personal Gemini API key in Settings before transcribing a video.")
+                .setPositiveButton("Add key") { _, _ -> showGeminiKeyDialog() }
+                .setNegativeButton("Cancel", null).show()
+            return
+        }
+        val videoUri = selectedVideo
+        if (videoUri == null) {
+            aiStatus.text = "Import and select a video first."
+            return
+        }
+        aiStatus.text = "Uploading video for timed transcription. Large videos may take a while…"
+        Thread {
+            var errorText: String? = null
+            var cues = emptyList<CaptionCue>()
+            var uploadUrl: String? = null
+            var fileUri: String? = null
+            var mimeType = contentResolver.getType(videoUri) ?: "video/mp4"
+            try {
+                val descriptor = contentResolver.openAssetFileDescriptor(videoUri, "r")
+                    ?: throw IllegalStateException("Cannot read the selected video.")
+                val length = descriptor.length
+                descriptor.close()
+                if (length <= 0L) throw IllegalStateException("Video size could not be determined.")
+                val startConnection = (URL("https://generativelanguage.googleapis.com/upload/v1beta/files?key=" + java.net.URLEncoder.encode(apiKey, "UTF-8")).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 30000
+                    readTimeout = 30000
+                    doOutput = true
+                    setRequestProperty("X-Goog-Upload-Protocol", "resumable")
+                    setRequestProperty("X-Goog-Upload-Command", "start")
+                    setRequestProperty("X-Goog-Upload-Header-Content-Length", length.toString())
+                    setRequestProperty("X-Goog-Upload-Header-Content-Type", mimeType)
+                    setRequestProperty("Content-Type", "application/json")
+                }
+                startConnection.outputStream.use { it.write(JSONObject().put("file", JSONObject().put("display_name", "OpenCut-video-${System.currentTimeMillis()}")).toString().toByteArray(Charsets.UTF_8)) }
+                val startCode = startConnection.responseCode
+                if (startCode !in 200..299) throw IllegalStateException("Gemini upload setup failed (HTTP $startCode). Check API key and quota.")
+                uploadUrl = startConnection.getHeaderField("X-Goog-Upload-URL")
+                startConnection.disconnect()
+                if (uploadUrl.isNullOrBlank()) throw IllegalStateException("Gemini did not return an upload URL.")
+                val uploadConnection = URL(uploadUrl).openConnection() as HttpURLConnection
+                uploadConnection.requestMethod = "POST"
+                uploadConnection.connectTimeout = 30000
+                uploadConnection.readTimeout = 120000
+                uploadConnection.doOutput = true
+                uploadConnection.setFixedLengthStreamingMode(length)
+                uploadConnection.setRequestProperty("X-Goog-Upload-Offset", "0")
+                uploadConnection.setRequestProperty("X-Goog-Upload-Command", "upload, finalize")
+                contentResolver.openInputStream(videoUri).use { input ->
+                    if (input == null) throw IllegalStateException("Cannot open video stream.")
+                    uploadConnection.outputStream.use { output -> input.copyTo(output, 64 * 1024) }
+                }
+                val uploadCode = uploadConnection.responseCode
+                val uploadBody = (if (uploadCode in 200..299) uploadConnection.inputStream else uploadConnection.errorStream)
+                    .bufferedReader(Charsets.UTF_8).use { it.readText() }
+                uploadConnection.disconnect()
+                if (uploadCode !in 200..299) throw IllegalStateException("Gemini video upload failed (HTTP $uploadCode): ${uploadBody.take(180)}")
+                val fileObject = JSONObject(uploadBody).optJSONObject("file") ?: JSONObject(uploadBody)
+                fileUri = fileObject.optString("uri").takeIf { it.isNotBlank() }
+                mimeType = fileObject.optString("mimeType", mimeType)
+                if (fileUri.isNullOrBlank()) throw IllegalStateException("Gemini upload returned no file URI.")
+                val prompt = """Transcribe all spoken dialogue in this video into subtitle cues. Return ONLY valid JSON array, no markdown. Each item must have numeric start and end times in seconds and a concise verbatim text field, schema: [{"start":0.0,"end":2.4,"text":"spoken words"}]. Use accurate timestamps, preserve language as spoken, split captions into readable phrases of at most about 8 words, omit music and sound effects, and do not invent speech."""
+                val requestBody = JSONObject().put("contents", org.json.JSONArray().put(JSONObject().put("parts", org.json.JSONArray()
+                    .put(JSONObject().put("text", prompt))
+                    .put(JSONObject().put("file_data", JSONObject().put("mime_type", mimeType).put("file_uri", fileUri)))))
+                    .put("generationConfig", JSONObject().put("responseMimeType", "application/json"))
+                    .toString()
+                var responseText: String? = null
+                var lastState = "PROCESSING"
+                repeat(12) {
+                    val statusConnection = URL("https://generativelanguage.googleapis.com/v1beta/" + fileObject.optString("name") + "?key=" + java.net.URLEncoder.encode(apiKey, "UTF-8")).openConnection() as HttpURLConnection
+                    statusConnection.connectTimeout = 15000
+                    statusConnection.readTimeout = 15000
+                    val statusCode = statusConnection.responseCode
+                    val statusBody = (if (statusCode in 200..299) statusConnection.inputStream else statusConnection.errorStream).bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    statusConnection.disconnect()
+                    if (statusCode in 200..299) {
+                        val statusJson = JSONObject(statusBody).optJSONObject("file") ?: JSONObject(statusBody)
+                        lastState = statusJson.optString("state", "ACTIVE")
+                        if (lastState == "ACTIVE") return@repeat
+                    }
+                    Thread.sleep(2000)
+                }
+                val genConnection = (URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + java.net.URLEncoder.encode(apiKey, "UTF-8")).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 30000
+                    readTimeout = 120000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                }
+                genConnection.outputStream.use { it.write(requestBody.toByteArray(Charsets.UTF_8)) }
+                val genCode = genConnection.responseCode
+                val genBody = (if (genCode in 200..299) genConnection.inputStream else genConnection.errorStream).bufferedReader(Charsets.UTF_8).use { it.readText() }
+                genConnection.disconnect()
+                if (genCode !in 200..299) throw IllegalStateException("Gemini transcription failed (HTTP $genCode): ${genBody.take(220)}")
+                val textResult = JSONObject(genBody).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
+                    ?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
+                    ?: throw IllegalStateException("Gemini returned no transcript.")
+                val cleaned = textResult.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+                val jsonCues = org.json.JSONArray(cleaned)
+                val parsed = mutableListOf<CaptionCue>()
+                for (i in 0 until jsonCues.length()) {
+                    val item = jsonCues.optJSONObject(i) ?: continue
+                    val start = item.optDouble("start", Double.NaN)
+                    val end = item.optDouble("end", Double.NaN)
+                    val text = item.optString("text").trim()
+                    if (start.isFinite() && end > start && text.isNotBlank()) parsed.add(CaptionCue(start, end, text))
+                }
+                cues = parsed.sortedBy { it.start }
+                if (cues.isEmpty()) throw IllegalStateException("Gemini returned no valid timed caption cues.")
+            } catch (e: Exception) {
+                errorText = e.message ?: "Transcription failed."
+            }
+            runOnUiThread {
+                if (cues.isNotEmpty()) {
+                    generatedCaptionCues.clear()
+                    generatedCaptionCues.addAll(cues)
+                    captionInput.setText(cues.joinToString(" ") { it.text })
+                    aiStatus.text = "Generated ${cues.size} timed caption cues. Review them and use Export SRT to save subtitles."
+                } else {
+                    aiStatus.text = errorText ?: "Could not transcribe this video."
+                }
+            }
+        }.start()
     }
 
     private fun generateGeminiDescription() {
